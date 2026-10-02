@@ -2,7 +2,7 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
-## 0.1.0 - 2026-10-01 21:32
+## 0.1.0 - 2026-10-01 22:28
 ---
 - [feature] Two tabs, Clipboard and Snippets, switched with ← / →
 - [feature] Pins in their own group on top, with a fixed number and Ctrl+1…9 to paste them
@@ -19,6 +19,7 @@
 - [feature] Global shortcuts configurable in Settings, registered in Hyprland without touching bindings.lua
 - [feature] Import and export of snippets and settings
 - [new] Fork of alanfortlink/clipboard-history with its own data folder, and docs/REFERENCES.md
+- [new] Full README with screenshots, uninstall instructions and a marketplace preview image
 - [update] A single window with a dimmed background and its own faster fade
 - [update] Under each clip only the time and size; the details stay in the preview
 - [fix] Pins are no longer lost to the limits or when clearing the history
