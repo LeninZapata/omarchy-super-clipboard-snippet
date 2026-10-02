@@ -2,7 +2,7 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
-## 0.2.0 - 2026-10-02 10:41
+## 0.2.0 - 2026-10-02 12:20
 ---
 - [feature] "Hide the content preview" setting: only the list, in a narrower window, with the type filters on their own line under the search
 - [feature] Zen mode (sub-option of the above): one-line rows, icons instead of labels, a thinner tab underline, filters hidden until Ctrl+F, and smaller, dimmer key hints that light up on hover
@@ -10,6 +10,7 @@
 - [feature] Ctrl+S opens and closes Settings (Ctrl+, still works), and is shown in the key hints
 - [update] The "Appearance" settings group is now "Layout"
 - [update] Key hints at the bottom wrap to a second line when they do not fit
+- [update] README: sections and screenshots for zen mode, pausing and clearing the history
 
 ## 0.1.0 - 2026-10-01 22:28
 ---

@@ -35,10 +35,12 @@ from any app.
 - **Quick snippets popup.** A tiny search at the mouse, on a global shortcut, to
   paste a snippet into whatever app you are typing in.
 - **Settings inside the picker.** Limits (count, age, image cache, history size),
-  normal or compact size, center or at-the-mouse placement, a list-only zen mode, global shortcuts,
+  normal or compact size, center or at-the-mouse placement, global shortcuts,
   language, and import/export of snippets and settings.
+- **Zen mode.** Hide the preview and strip the picker down to a narrow list of
+  one-line rows, for people who use it all day and know the keys by heart.
 - **English and Spanish.** English by default; the language is a setting.
-- **Pause recording** from a button or `Ctrl+=`.
+- **Pause recording** from a button or `Ctrl+=`, with a banner that keeps it in view.
 - **Theme-integrated.** Colors, spacing and fonts come from the Omarchy shell theme.
 
 <p align="center">
@@ -119,6 +121,29 @@ install what is missing.
 | `Esc` | clear the search, then close |
 
 Hovering a row with the mouse shows pin and delete buttons.
+
+### Pause recording
+
+<p align="center">
+  <img src="docs/screenshots/paused.png" alt="Paused recording: red Resume button and a banner under the search bar" width="760">
+</p>
+
+`Ctrl+=` or the pause button in the tab bar stops recording new copies, for example
+while you copy passwords or other private data. While paused, the button turns into a
+red **Resume**, the counter says *paused* and a banner under the search bar reminds
+you, so it is never left on by accident. The history you already have still works
+as usual. Press `Ctrl+=` again to resume.
+
+### Clearing the history
+
+<p align="center">
+  <img src="docs/screenshots/clear-history.png" alt="Dialog that asks to type delete before clearing the history" width="515">
+</p>
+
+`Shift+Delete` or the trash button next to the search bar deletes every unpinned clip
+and its images. To avoid accidents, the dialog asks you to type the confirmation word
+(`delete`, or `borrar` in Spanish). `Enter` confirms and `Esc` cancels. Pins are
+always kept.
 
 ## Snippets
 
@@ -207,14 +232,26 @@ A pasted snippet is not added to the clipboard history.
 | Images | OCR · QR decoding · OCR language |
 | Backup | export / import snippets · export / import settings |
 
-**Hide the content preview** leaves only the list, in a narrower window; the type
-filters move to their own line under the search. With it on, **Zen mode** goes as
-minimal as it gets, for people who use the picker all day and know the keys by heart:
-one-line rows (the selected one shows its time and size at the right edge, over a
-fade), icons instead of the tab, pause and settings
-labels, a thinner tab underline, smaller and dimmer key hints at the bottom (they
-light up on hover), and the filters hidden until `Ctrl+F` (they stay
-visible while one is applied).
+### Hide the preview and zen mode
+
+<p align="center">
+  <img src="docs/screenshots/zen-mode.png" alt="Zen mode: a narrow list of one-line rows with icon-only tabs" width="515">
+</p>
+
+**Hide the content preview** (Settings → Layout) leaves only the list, in a narrower
+window, and moves the type filters to their own line under the search. Editing a clip
+or a snippet then takes the place of the list.
+
+With it on, a sub-option appears: **Zen mode**. It goes as minimal as it gets, for
+people who use the picker all day and know the keys by heart:
+
+- One-line rows, without the time and size. The selected row shows them at its right
+  edge, over a fade.
+- Icons only for the tabs, pause, settings and the tab-switch hint, and a thinner
+  underline on the active tab.
+- Pinned clips under a lone ★, and the history under a plain line.
+- The type filters stay hidden until `Ctrl+F` (and stay visible while one is applied).
+- Smaller, dimmer key hints at the bottom that light up when the mouse is over them.
 
 Settings live in `~/.config/omarchy/super-clipboard-snippet/settings.json`. The file
 is plain JSON and is reloaded when edited by hand.
@@ -241,6 +278,10 @@ omarchy-shell shell toggle leninzapata.super-clipboard-snippet                  
 omarchy-shell shell call leninzapata.super-clipboard-snippet quickSnippets '{}'  # snippets popup
 omarchy-shell shell call leninzapata.super-clipboard-snippet pause '{"paused":"toggle"}'
 ```
+
+## Changelog
+
+What changed in each version is in [changelog.md](changelog.md).
 
 ## Development
 
