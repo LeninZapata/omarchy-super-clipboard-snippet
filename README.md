@@ -59,6 +59,20 @@ To use your own keys instead, open **Settings → Shortcuts** and choose one for
 **Open the picker** and one for the **Snippets popup**. The plugin registers them in
 Hyprland at runtime and never edits your `bindings.lua`.
 
+### Uninstall
+
+```bash
+omarchy plugin remove leninzapata.super-clipboard-snippet
+```
+
+This removes the plugin and its runtime shortcuts, and brings back the built-in
+`omarchy.clipboard`. Your history, snippets and settings are kept, so a reinstall picks
+them up. To erase them too:
+
+```bash
+rm -rf ~/.local/state/omarchy/super-clipboard-snippet ~/.config/omarchy/super-clipboard-snippet
+```
+
 ### Dependencies
 
 All of them are regular Arch packages, and Omarchy ships most of them.
