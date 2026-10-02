@@ -35,7 +35,7 @@ from any app.
 - **Quick snippets popup.** A tiny search at the mouse, on a global shortcut, to
   paste a snippet into whatever app you are typing in.
 - **Settings inside the picker.** Limits (count, age, image cache, history size),
-  normal or compact size, center or at-the-mouse placement, global shortcuts,
+  normal or compact size, center or at-the-mouse placement, a list-only zen mode, global shortcuts,
   language, and import/export of snippets and settings.
 - **English and Spanish.** English by default; the language is a setting.
 - **Pause recording** from a button or `Ctrl+=`.
@@ -115,7 +115,7 @@ install what is missing.
 | `Shift+Delete` | clear the history (type the confirmation word; pins are kept) |
 | `Ctrl+=` | pause / resume recording |
 | `←` `→` | switch tab |
-| `Ctrl+,` | settings |
+| `Ctrl+S` · `Ctrl+,` | settings |
 | `Esc` | clear the search, then close |
 
 Hovering a row with the mouse shows pin and delete buttons.
@@ -140,6 +140,7 @@ shows exactly what will be pasted, with the variables already filled in.
 | `F2` · `Ctrl+E` | edit |
 | `Ctrl+K` | variables |
 | `Delete` | delete (asks for confirmation) |
+| `Ctrl+S` · `Ctrl+,` | settings |
 
 <p align="center">
   <img src="docs/screenshots/snippet-editor.png" alt="Snippet editor with the Markdown toolbar" width="760">
@@ -194,17 +195,26 @@ A pasted snippet is not added to the clipboard history.
   <img src="docs/screenshots/settings.png" alt="Settings page" width="760">
 </p>
 
-`Ctrl+,` or the gear in the tab bar. Everything is saved on change.
+`Ctrl+S`, `Ctrl+,` or the gear in the tab bar. Everything is saved on change.
 
 | Section | Options |
 |---|---|
 | General | language (English, Español) |
-| Appearance | size (normal, compact) · open at (center, mouse) |
+| Layout | size (normal, compact) · open at (center, mouse) · hide the content preview · zen mode |
 | Shortcuts | open the picker · snippets popup |
 | Behavior | close when clicking outside · confirm before deleting a clip |
 | History | maximum clips · keep clips for · image cache · history size |
 | Images | OCR · QR decoding · OCR language |
 | Backup | export / import snippets · export / import settings |
+
+**Hide the content preview** leaves only the list, in a narrower window; the type
+filters move to their own line under the search. With it on, **Zen mode** goes as
+minimal as it gets, for people who use the picker all day and know the keys by heart:
+one-line rows (the selected one shows its time and size at the right edge, over a
+fade), icons instead of the tab, pause and settings
+labels, a thinner tab underline, smaller and dimmer key hints at the bottom (they
+light up on hover), and the filters hidden until `Ctrl+F` (they stay
+visible while one is applied).
 
 Settings live in `~/.config/omarchy/super-clipboard-snippet/settings.json`. The file
 is plain JSON and is reloaded when edited by hand.

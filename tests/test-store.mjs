@@ -165,6 +165,8 @@ test("parseSettings: own file, defaults and clamping", () => {
   assert.equal(d.language, "en")
   assert.equal(d.size, "normal")
   assert.equal(d.position, "center")
+  assert.equal(d.hidePreview, false)
+  assert.equal(d.zenMode, false)
   assert.equal(d.openShortcut, "")
   assert.equal(Store.parseSettings(JSON.stringify({ quickShortcut: "ctrl+space" })).quickShortcut, "ctrl+space")
   assert.equal(Store.parseSettings(JSON.stringify({ quickShortcut: "ctrl; rm" })).quickShortcut, "")

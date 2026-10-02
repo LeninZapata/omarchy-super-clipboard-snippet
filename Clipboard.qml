@@ -95,6 +95,9 @@ Item {
   // Hora y tamaño bajo cada clip: más apagado que mutedFg para que no compita con el título.
   property color rowMetaFg: Util.alpha(foreground, 0.38)
   property color chipBg: Util.alpha(foreground, 0.07)
+  // selectedBackground es translúcido: su mezcla opaca sobre el fondo, para tapar
+  // de verdad lo que quede debajo (la hora/tamaño de zen sobre el título).
+  property color selectedSolid: Qt.tint(background, selectedBackground)
   property color lineColor: Util.alpha(foreground, 0.14)
   readonly property int cornerRadius: Style.cornerRadius
   readonly property string fontFamily: Style.font.menuFamily
@@ -102,7 +105,15 @@ Item {
   readonly property int headerHeight: Math.max(Style.space(40), Style.font.heading + Style.spacing.controlPaddingY * 2)
   // Tamaño (setting `size`): compacto = ventana, filas y miniaturas más chicas.
   readonly property bool compactUi: root.settings.size === "compact"
-  readonly property int cardWidth: compactUi ? Style.space(810) : Style.space(980)
+  // Sin preview (setting `hidePreview`) la tarjeta se queda con la lista sola y
+  // más angosta. Settings conserva el ancho completo: sus filas no caben.
+  readonly property bool hidePreview: !!root.settings.hidePreview
+  readonly property bool listOnly: hidePreview && activeTab !== "settings"
+  // Modo zen: solo existe con el preview oculto. Filas de una línea, iconos en
+  // vez de textos y los filtros escondidos hasta Ctrl+F.
+  readonly property bool zenUi: hidePreview && !!root.settings.zenMode
+  readonly property int cardWidth: listOnly ? (compactUi ? Style.space(520) : Style.space(620))
+                                            : (compactUi ? Style.space(810) : Style.space(980))
   readonly property int cardHeight: compactUi ? Style.space(520) : Style.space(680)
   readonly property int rowHeight: compactUi ? Style.space(42) : Style.space(52)
   readonly property int thumbSize: compactUi ? Style.space(28) : Style.space(36)
@@ -110,6 +121,11 @@ Item {
   // tipo/app/fecha en cada una cansa). El detalle sigue en el preview.
   readonly property int pinnedRowHeight: compactUi ? Style.space(30) : Style.space(34)
   readonly property int listWidth: Math.round(card.width * 0.46)
+  // Borde izquierdo de lo que va a la derecha de la lista (preview, editores);
+  // sin preview, los editores ocupan el ancho entero en lugar de la lista.
+  readonly property int paneLeft: hidePreview ? 0 : listWidth + Style.space(14)
+  // Subrayado de la pestaña activa; en zen, a la mitad.
+  readonly property real tabUnderline: zenUi ? Math.max(2, Style.space(3)) / 2 : Math.max(2, Style.space(3))
 
   // Aparición propia (fade + escala leve). La animación de capas de Hyprland es
   // global y lenta (400 ms al entrar); el namespace "omarchy-clipboard" la apaga
@@ -128,6 +144,8 @@ Item {
   readonly property bool atCursor: root.settings.position === "cursor"
   property real cardX: 0
   property real cardY: 0
+  // El ancho cambia al entrar/salir de Settings sin preview: que no se salga de la pantalla.
+  onCardWidthChanged: if (root.atCursor) root.cardX = Math.max(Style.space(12), Math.min(panel.width - root.cardWidth - Style.space(12), root.cardX))
 
   function placeAtCursor(raw) {
     var pos = null
@@ -191,17 +209,21 @@ Item {
   // ------------------------------------------------------------ settings
   // Vista propia (no entra en el ciclo de ← / →): Ctrl+, o el engranaje.
   // Filas con `section` son títulos; el resto se edita con teclado o mouse.
+  // Una fila con `requires` se oculta (y el cursor la salta) si ese setting está apagado.
   // label/desc/section y las etiquetas de opción son claves de lang/*.js; una
   // etiqueta que no es clave (p. ej. "500") se muestra tal cual.
   readonly property var settingsRows: [
     { section: "set.section.general" },
     { key: "language", type: "choice", label: "set.language", desc: "set.language.desc",
       options: [{ value: "en", label: "English" }, { value: "es", label: "Español" }] },
-    { section: "set.section.appearance" },
+    { section: "set.section.layout" },
     { key: "size", type: "choice", label: "set.size", desc: "set.size.desc",
       options: [{ value: "normal", label: "opt.normal" }, { value: "compact", label: "opt.compact" }] },
     { key: "position", type: "choice", label: "set.position", desc: "set.position.desc",
       options: [{ value: "center", label: "opt.center" }, { value: "cursor", label: "opt.cursor" }] },
+    { key: "hidePreview", type: "bool", label: "set.hidePreview", desc: "set.hidePreview.desc" },
+    // `requires`: sub-opción, solo a la vista (y sangrada) con ese setting encendido.
+    { key: "zenMode", type: "bool", label: "set.zenMode", desc: "set.zenMode.desc", requires: "hidePreview" },
     { section: "set.section.shortcuts" },
     { key: "openShortcut", type: "choice", label: "set.openShortcut", desc: "set.openShortcut.desc",
       options: [{ value: "", label: "opt.off" }, { value: "ctrl+shift+v", label: "Ctrl+Shift+V" },
@@ -252,12 +274,16 @@ Item {
     return root.settings[key]
   }
 
+  function settingsRowShown(row) {
+    return !row.requires || !!root.settings[row.requires]
+  }
+
   function nextSettingsRow(from, delta) {
     var i = from
     for (var n = 0; n < root.settingsRows.length; n++) {
       i += delta
       if (i < 0 || i >= root.settingsRows.length) return from
-      if (!root.settingsRows[i].section) return i
+      if (!root.settingsRows[i].section && root.settingsRowShown(root.settingsRows[i])) return i
     }
     return from
   }
@@ -1607,7 +1633,9 @@ Item {
           }
 
           var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
-          if (ctrl && event.key === Qt.Key_Comma) {
+          // Settings: Ctrl+S o Ctrl+, (abre y cierra). Los editores guardan con
+          // Ctrl+S, pero tienen el foco y se quedan la tecla antes de llegar aquí.
+          if (ctrl && (event.key === Qt.Key_S || event.key === Qt.Key_Comma)) {
             if (root.activeTab === "settings") root.closeSettings()
             else root.openSettings()
             event.accepted = true
@@ -2254,7 +2282,7 @@ Item {
                   id: tabLabel
                   anchors.centerIn: parent
                   anchors.verticalCenterOffset: -Style.space(2)
-                  text: parent.modelData.icon + "  " + root.t(parent.modelData.label)
+                  text: root.zenUi ? parent.modelData.icon : parent.modelData.icon + "  " + root.t(parent.modelData.label)
                   color: parent.active ? root.accent : root.mutedFg
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.body
@@ -2265,7 +2293,7 @@ Item {
                   anchors.left: parent.left
                   anchors.right: parent.right
                   anchors.bottom: parent.bottom
-                  height: Math.max(2, Style.space(3))
+                  height: root.tabUnderline
                   radius: height / 2
                   color: root.accent
                   visible: parent.active
@@ -2288,7 +2316,7 @@ Item {
             anchors.rightMargin: Style.space(14)
             anchors.verticalCenter: parent.verticalCenter
             anchors.verticalCenterOffset: -Style.space(2)
-            text: "←  →  " + root.t("tab.switchHint")
+            text: root.zenUi ? "←  →" : "←  →  " + root.t("tab.switchHint")
             color: root.mutedFg
             opacity: 0.7
             font.family: root.fontFamily
@@ -2323,7 +2351,8 @@ Item {
 
               Text {
                 anchors.verticalCenter: parent.verticalCenter
-                text: root.paused ? "󰐊  " + root.t("pause.resume") : "󰏤  " + root.t("pause.pause")
+                text: root.zenUi ? (root.paused ? "󰐊" : "󰏤")
+                      : root.paused ? "󰐊  " + root.t("pause.resume") : "󰏤  " + root.t("pause.pause")
                 color: root.paused ? root.pausedColor : (pauseMouse.containsMouse ? root.accent : root.mutedFg)
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.body
@@ -2332,6 +2361,7 @@ Item {
 
               Rectangle {
                 anchors.verticalCenter: parent.verticalCenter
+                visible: !root.zenUi
                 radius: Style.space(3)
                 color: root.chipBg
                 width: pauseKey.implicitWidth + Style.space(10)
@@ -2374,7 +2404,7 @@ Item {
               id: gearLabel
               anchors.centerIn: parent
               anchors.verticalCenterOffset: -Style.space(2)
-              text: "󰒓  " + root.t("tab.settings")
+              text: root.zenUi ? "󰒓" : "󰒓  " + root.t("tab.settings")
               color: parent.active || gearMouse.containsMouse ? root.accent : root.mutedFg
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -2385,7 +2415,7 @@ Item {
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.bottom: parent.bottom
-              height: Math.max(2, Style.space(3))
+              height: root.tabUnderline
               radius: height / 2
               color: root.accent
               visible: parent.active
@@ -2416,18 +2446,24 @@ Item {
         // ---- buscador (60 %) + filtros (40 %) en una sola fila. Los filtros que
         // no caben se desvanecen a la derecha; con Ctrl+F y ← / → la tira se
         // desliza para mostrar siempre el activo.
+        // Sin preview la tarjeta es angosta: los filtros bajan a su propia línea, y en
+        // zen esa línea se oculta salvo en modo filtros (Ctrl+F) o con un filtro puesto
+        // (si no, un filtro activo quedaría aplicado sin verse).
         Item {
           id: searchBar
+          readonly property bool chipsBelow: root.hidePreview
+          readonly property bool chipsShown: !root.zenUi || root.chipMode || root.typeFilter !== ""
+          readonly property int chipsLineHeight: Style.space(32)
           width: parent.width
-          height: root.headerHeight
+          height: root.headerHeight + (chipsBelow && chipsShown ? chipsLineHeight : 0)
           visible: root.activeTab === "clipboard"
 
           Item {
             id: searchArea
             anchors.left: parent.left
             anchors.top: parent.top
-            anchors.bottom: parent.bottom
-            width: Math.round(parent.width * 0.6)
+            height: root.headerHeight
+            width: searchBar.chipsBelow ? parent.width - clearButton.width - Style.space(10) : Math.round(parent.width * 0.6)
 
             Text {
               id: searchIcon
@@ -2490,12 +2526,13 @@ Item {
 
           Item {
             id: chipsRow
-            anchors.left: searchArea.right
-            anchors.leftMargin: Style.space(10)
-            anchors.right: clearButton.left
-            anchors.rightMargin: Style.space(8)
-            anchors.top: parent.top
-            anchors.bottom: parent.bottom
+            visible: !searchBar.chipsBelow || searchBar.chipsShown
+            anchors.left: searchBar.chipsBelow ? parent.left : searchArea.right
+            anchors.leftMargin: searchBar.chipsBelow ? 0 : Style.space(10)
+            anchors.right: searchBar.chipsBelow ? parent.right : clearButton.left
+            anchors.rightMargin: searchBar.chipsBelow ? 0 : Style.space(8)
+            anchors.top: searchBar.chipsBelow ? searchArea.bottom : parent.top
+            height: searchBar.chipsBelow ? searchBar.chipsLineHeight : root.headerHeight
 
             // En modo filtros, la zona se enmarca para que se vea dónde está el teclado.
             Rectangle {
@@ -2633,7 +2670,7 @@ Item {
           Rectangle {
             id: clearButton
             anchors.right: parent.right
-            anchors.verticalCenter: parent.verticalCenter
+            anchors.verticalCenter: searchArea.verticalCenter
             radius: Style.space(4)
             color: clearMouse.containsMouse ? Util.alpha(root.pausedColor, 0.2) : root.chipBg
             width: Style.space(26)
@@ -2734,7 +2771,7 @@ Item {
         Item {
           width: parent.width
           visible: root.activeTab === "clipboard"
-          height: parent.height - tabBar.height - root.headerHeight
+          height: parent.height - tabBar.height - searchBar.height
                   - (root.paused ? Style.space(24) + Style.space(10) : 0)
                   - (root.missingDeps.length > 0 ? Style.space(24) + Style.space(10) : 0)
                   - footer.height - Style.space(30)
@@ -2744,7 +2781,9 @@ Item {
             anchors.top: parent.top
             anchors.bottom: parent.bottom
             anchors.left: parent.left
-            width: root.listWidth
+            width: root.hidePreview ? parent.width : root.listWidth
+            // Sin preview, el editor (F2 / Ctrl+M) toma el sitio de la lista.
+            visible: !(root.hidePreview && root.editing)
             model: displayModel
             clip: true
             spacing: Style.space(3)
@@ -2771,7 +2810,8 @@ Item {
               readonly property string header: root.pinnedShown === 0 ? ""
                 : index === 0 ? "pinned" : index === root.pinnedShown ? "history" : ""
               readonly property int headerH: header ? Style.space(26) : 0
-              readonly property bool compact: index < root.pinnedShown
+              // Fijados (y en zen, todas): finas y sin la línea de hora/tamaño.
+              readonly property bool compact: index < root.pinnedShown || root.zenUi
               readonly property int thumbSize: compact ? Style.space(22) : root.thumbSize
 
               width: resultList.width
@@ -2789,7 +2829,9 @@ Item {
                   anchors.leftMargin: Style.space(10)
                   anchors.bottom: parent.bottom
                   anchors.bottomMargin: Style.space(5)
-                  text: row.header === "pinned" ? "★  " + root.t("group.pinned") : root.t("group.history")
+                  // Zen: los fijados solo con la ★ y el historial sin título, solo la línea.
+                  text: row.header === "pinned" ? (root.zenUi ? "★" : "★  " + root.t("group.pinned"))
+                        : (root.zenUi ? "" : root.t("group.history"))
                   color: row.header === "pinned" ? root.accent : root.mutedFg
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
@@ -2802,7 +2844,7 @@ Item {
                   anchors.left: groupTitle.right
                   anchors.leftMargin: Style.space(8)
                   anchors.baseline: groupTitle.baseline
-                  text: row.header === "pinned" ? "ctrl+1…9 " + root.t("group.paste") : ""
+                  text: row.header === "pinned" && !root.zenUi ? "ctrl+1…9 " + root.t("group.paste") : ""
                   color: root.mutedFg
                   opacity: 0.7
                   font.family: root.fontFamily
@@ -2810,11 +2852,11 @@ Item {
                 }
 
                 Rectangle {
-                  anchors.left: groupHint.text ? groupHint.right : groupTitle.right
-                  anchors.leftMargin: Style.space(8)
+                  anchors.left: groupHint.text ? groupHint.right : groupTitle.text ? groupTitle.right : parent.left
+                  anchors.leftMargin: groupTitle.text ? Style.space(8) : Style.space(10)
                   anchors.right: parent.right
                   anchors.rightMargin: Style.space(10)
-                  anchors.verticalCenter: groupTitle.verticalCenter
+                  anchors.verticalCenter: groupTitle.text ? groupTitle.verticalCenter : parent.verticalCenter
                   height: Style.normalBorderWidth
                   color: root.lineColor
                 }
@@ -2932,6 +2974,50 @@ Item {
                 }
               }
 
+              // Zen: la fila señalada muestra hora y tamaño en la esquina derecha, encima
+              // del final del título, que se desvanece hacia ellos con un degradado.
+              // Se corre a la izquierda del pin (★ ctrl+N) o de los botones del mouse.
+              Item {
+                visible: root.zenUi && row.hasCursor && row.subtitle !== ""
+                anchors.right: rowBg.right
+                anchors.rightMargin: Style.space(10) + (row.hovered ? rowActions.implicitWidth + Style.space(8)
+                                                       : pinMark.visible ? pinMark.width + Style.space(10) : 0)
+                anchors.top: rowBg.top
+                anchors.bottom: rowBg.bottom
+                width: zenFade.width + zenMetaText.implicitWidth + Style.space(6)
+
+                Rectangle {
+                  id: zenFade
+                  anchors.left: parent.left
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  width: Style.space(40)
+                  gradient: Gradient {
+                    orientation: Gradient.Horizontal
+                    GradientStop { position: 0.0; color: Util.alpha(root.selectedSolid, 0) }
+                    GradientStop { position: 1.0; color: root.selectedSolid }
+                  }
+                }
+
+                Rectangle {
+                  anchors.left: zenFade.right
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.bottom: parent.bottom
+                  color: root.selectedSolid
+                }
+
+                Text {
+                  id: zenMetaText
+                  anchors.right: parent.right
+                  anchors.verticalCenter: parent.verticalCenter
+                  text: row.subtitle
+                  color: root.mutedFg
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+              }
+
               MouseArea {
                 anchors.fill: parent
                 anchors.topMargin: row.headerH
@@ -3016,6 +3102,7 @@ Item {
             anchors.leftMargin: root.listWidth + Style.space(6)
             width: Style.normalBorderWidth
             color: root.lineColor
+            visible: !root.hidePreview
           }
 
           // Nota del clip (Ctrl+M), encima del preview.
@@ -3026,7 +3113,7 @@ Item {
             anchors.right: parent.right
             anchors.left: parent.left
             anchors.leftMargin: root.listWidth + Style.space(14)
-            visible: note !== "" && !root.editing
+            visible: note !== "" && !root.editing && !root.hidePreview
             height: visible ? noteText.implicitHeight + Style.space(34) : 0
             radius: root.cornerRadius
             color: Util.alpha(root.accent, 0.1)
@@ -3077,7 +3164,7 @@ Item {
             pluginDir: root.pluginDir
             tr: root.t
             strings: root.strings
-            visible: root.currentResult !== null && !root.editing
+            visible: root.currentResult !== null && !root.editing && !root.hidePreview
           }
 
           // Editor en el sitio del preview (F2 / Ctrl+E).
@@ -3086,7 +3173,7 @@ Item {
             anchors.bottom: parent.bottom
             anchors.right: parent.right
             anchors.left: parent.left
-            anchors.leftMargin: root.listWidth + Style.space(14)
+            anchors.leftMargin: root.paneLeft
             visible: root.editing
             radius: root.cornerRadius
             color: root.chipBg
@@ -3295,7 +3382,8 @@ Item {
               anchors.top: parent.top
               anchors.bottom: parent.bottom
               anchors.left: parent.left
-              width: root.listWidth
+              width: root.hidePreview ? parent.width : root.listWidth
+              visible: !(root.hidePreview && root.snipEditing)
               model: root.snipResults
               clip: true
               spacing: Style.space(3)
@@ -3307,7 +3395,7 @@ Item {
                 required property int index
                 readonly property bool current: index === root.snipIndex
                 width: snipList.width
-                height: root.compactUi ? Style.space(40) : Style.space(46)
+                height: root.zenUi ? root.pinnedRowHeight : root.compactUi ? Style.space(40) : Style.space(46)
                 radius: root.cornerRadius
                 color: current ? root.selectedBackground : "transparent"
 
@@ -3332,7 +3420,7 @@ Item {
                   Text {
                     textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                     width: parent.width
-                    visible: !!snipRow.modelData.slug
+                    visible: !!snipRow.modelData.slug && !root.zenUi
                     text: snipRow.modelData.slug
                     color: root.rowMetaFg
                     font.family: root.fontFamily
@@ -3358,7 +3446,7 @@ Item {
               anchors.centerIn: snipList
               width: snipList.width
               spacing: Style.space(8)
-              visible: root.snipResults.length === 0
+              visible: root.snipResults.length === 0 && snipList.visible
 
               Text {
                 width: parent.width
@@ -3390,6 +3478,7 @@ Item {
               anchors.leftMargin: root.listWidth + Style.space(6)
               width: Style.normalBorderWidth
               color: root.lineColor
+              visible: !root.hidePreview
             }
 
             // Preview: lo que se pega, ya con las variables resueltas.
@@ -3400,7 +3489,7 @@ Item {
               anchors.right: parent.right
               anchors.left: parent.left
               anchors.leftMargin: root.listWidth + Style.space(14)
-              visible: !root.snipEditing && root.currentSnippet !== null
+              visible: !root.snipEditing && root.currentSnippet !== null && !root.hidePreview
 
               Text {
                 textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
@@ -3529,7 +3618,7 @@ Item {
               anchors.bottom: parent.bottom
               anchors.right: parent.right
               anchors.left: parent.left
-              anchors.leftMargin: root.listWidth + Style.space(14)
+              anchors.leftMargin: root.paneLeft
               visible: root.snipEditing
 
               function commonKeys(event) {
@@ -3771,7 +3860,9 @@ Item {
             anchors.rightMargin: Style.space(4)
             model: root.settingsRows
             clip: true
-            spacing: Style.space(6)
+            // El espacio entre filas va dentro de cada una (`gap`): una fila oculta
+            // (sub-opción con su setting apagado) mide 0 y no deja hueco doble.
+            spacing: 0
             boundsBehavior: Flickable.StopAtBounds
 
             delegate: Item {
@@ -3779,9 +3870,13 @@ Item {
               required property var modelData
               required property int index
               readonly property bool hasCursor: index === root.settingsCursor
+              readonly property bool shown: root.settingsRowShown(modelData)
+              readonly property int gap: Style.space(6)
+              readonly property int indent: modelData.requires ? Style.space(28) : 0
               width: settingsList.width
-              height: modelData.section ? sectionHeader.implicitHeight + Style.space(14)
-                    : modelData.type === "bool" ? toggleRow.implicitHeight : choiceRow.implicitHeight
+              visible: shown
+              height: !shown ? 0 : gap + (modelData.section ? sectionHeader.implicitHeight + Style.space(14)
+                    : modelData.type === "bool" ? toggleRow.implicitHeight : choiceRow.implicitHeight)
 
               PanelSectionHeader {
                 id: sectionHeader
@@ -3797,7 +3892,9 @@ Item {
               Toggle {
                 id: toggleRow
                 visible: settingRow.modelData.type === "bool"
-                width: parent.width
+                x: settingRow.indent
+                y: settingRow.gap
+                width: parent.width - settingRow.indent
                 label: settingRow.modelData.label ? root.t(settingRow.modelData.label) : ""
                 description: settingRow.modelData.desc ? root.t(settingRow.modelData.desc) : ""
                 checked: visible ? !!root.settingValue(settingRow.modelData.key) : false
@@ -3817,6 +3914,7 @@ Item {
               BorderSurface {
                 id: choiceRow
                 visible: settingRow.modelData.type === "choice" || settingRow.modelData.type === "button"
+                y: settingRow.gap
                 width: parent.width
                 implicitHeight: Math.max(54, choiceText.implicitHeight + Style.spacing.huge)
                 radius: Style.cornerRadius
@@ -3886,11 +3984,18 @@ Item {
           }
         }
 
-        // ---- footer key hints
-        Row {
+        // ---- footer key hints. Flow: en la tarjeta angosta (sin preview) baja de línea.
+        // En zen va más chico, más junto y apagado (ya se saben las teclas); con el
+        // mouse encima se aviva para consultarlo.
+        Flow {
           id: footer
+          readonly property int keyFont: root.zenUi ? Math.max(8, Style.font.caption - 1) : Style.font.caption
           width: parent.width
-          spacing: Style.space(10)
+          spacing: root.zenUi ? Style.space(6) : Style.space(10)
+          opacity: root.zenUi && !footerHover.hovered ? 0.4 : 1
+          Behavior on opacity { NumberAnimation { duration: 120 } }
+
+          HoverHandler { id: footerHover }
 
           Repeater {
             model: root.activeTab === "settings" ? [
@@ -3915,8 +4020,9 @@ Item {
               { keys: "ctrl+k", hint: "hint.variables" },
               { keys: "del", hint: "hint.remove" },
               { keys: "←/→", hint: "hint.switchTab", full: true },
+              { keys: "ctrl+s", hint: "hint.settings" },
               { keys: "esc", hint: "hint.close" }
-            ].filter(function(h) { return !h.full || !root.compactUi }) : [
+            ].filter(function(h) { return !h.full || !(root.compactUi || root.listOnly) }) : [
               { keys: "ctrl+n/p", hint: "hint.navigate" },
               { keys: "enter", hint: "hint.paste" },
               { keys: "shift+enter", hint: "hint.copy" },
@@ -3925,18 +4031,19 @@ Item {
               { keys: "f2", hint: "hint.edit", full: true },
               { keys: "ctrl+.", hint: "hint.actions" },
               { keys: "del", hint: "hint.remove" },
+              { keys: "ctrl+s", hint: "hint.settings" },
               { keys: "esc", hint: "hint.close" }
-            ].filter(function(h) { return !h.full || !root.compactUi })
+            ].filter(function(h) { return !h.full || !(root.compactUi || root.listOnly) })
 
             delegate: Row {
               required property var modelData
-              spacing: Style.space(4)
+              spacing: root.zenUi ? Style.space(3) : Style.space(4)
 
               Rectangle {
                 radius: Style.space(3)
                 color: root.chipBg
-                width: keyText.implicitWidth + Style.space(10)
-                height: Style.space(18)
+                width: keyText.implicitWidth + (root.zenUi ? Style.space(6) : Style.space(10))
+                height: root.zenUi ? Style.space(14) : Style.space(18)
                 anchors.verticalCenter: parent.verticalCenter
 
                 Text {
@@ -3945,7 +4052,7 @@ Item {
                   text: modelData.keys
                   color: root.mutedFg
                   font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
+                  font.pixelSize: footer.keyFont
                 }
               }
 
@@ -3954,7 +4061,7 @@ Item {
                 color: root.mutedFg
                 opacity: 0.7
                 font.family: root.fontFamily
-                font.pixelSize: Style.font.caption
+                font.pixelSize: footer.keyFont
                 anchors.verticalCenter: parent.verticalCenter
               }
             }

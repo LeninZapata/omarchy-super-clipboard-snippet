@@ -340,6 +340,8 @@ var SETTINGS_SPEC = {
   language: { type: "string", def: "en" }, // lang/<language>.js; lo desconocido cae al inglés
   size: { type: "string", def: "normal" }, // "normal" | "compact"
   position: { type: "string", def: "center" }, // "center" | "cursor"
+  hidePreview: { type: "bool", def: false }, // solo la lista, sin el panel de preview
+  zenMode: { type: "bool", def: false }, // minimalista; solo aplica con hidePreview
   // Atajos globales que registra el plugin en Hyprland (vacío = no registrar):
   // ids tipo "ctrl+shift+v"; Clipboard.qml los convierte en "CTRL + SHIFT + V".
   openShortcut: { type: "string", def: "" },
