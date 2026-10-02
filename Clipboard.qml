@@ -338,8 +338,7 @@ Item {
     root.ignoreText = text
     root.close()
     root.closeQuick()
-    var cmd = 'printf %s "$1" | wl-copy' + (copyOnly ? "" : '; sleep 0.15; wtype -M shift -k Insert -m shift')
-    Quickshell.execDetached(["sh", "-c", cmd, "snippet", text])
+    root.writeClipboard(text, !copyOnly)
   }
 
   function newSnippet() {
@@ -861,7 +860,31 @@ Item {
   function copyText(text) {
     if (!text) return
     root.close()
-    Quickshell.execDetached(["wl-copy", "--type", "text/plain", "--", text])
+    root.writeClipboard(text, false)
+  }
+
+  // Pone un texto en el portapapeles (y opcionalmente lo pega) pasándolo por
+  // stdin, nunca como argumento: wl-copy se queda en segundo plano mientras es
+  // dueño de la selección, y sus argumentos los puede leer cualquier usuario.
+  function writeClipboard(text, thenPaste) {
+    var script = thenPaste ? "wl-copy --type text/plain; sleep 0.15; wtype -M shift -k Insert -m shift"
+                           : "wl-copy --type text/plain"
+    var writer = clipWriterComponent.createObject(root, { payload: String(text), command: ["sh", "-c", script] })
+    writer.running = true
+  }
+
+  Component {
+    id: clipWriterComponent
+    Process {
+      property string payload: ""
+      stdinEnabled: true
+      onStarted: {
+        write(payload)
+        payload = ""
+        stdinEnabled = false // cierra stdin: wl-copy recibe EOF
+      }
+      onExited: destroy()
+    }
   }
 
   function removeIndex(index) {
