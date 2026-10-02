@@ -2,7 +2,7 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
-## 0.2.0 - 2026-10-02 12:20
+## 0.2.0 - 2026-10-02 12:15
 ---
 - [feature] "Hide the content preview" setting: only the list, in a narrower window, with the type filters on their own line under the search
 - [feature] Zen mode (sub-option of the above): one-line rows, icons instead of labels, a thinner tab underline, filters hidden until Ctrl+F, and smaller, dimmer key hints that light up on hover
