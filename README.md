@@ -42,7 +42,7 @@ from any app.
 - **Theme-integrated.** Colors, spacing and fonts come from the Omarchy shell theme.
 
 <p align="center">
-  <img src="docs/screenshots/search.png" alt="Type filters next to the search bar, with Images selected" width="760">
+  <img src="docs/screenshots/filters.png" alt="Type filters next to the search bar, with Images selected" width="760">
 </p>
 
 ## Install
