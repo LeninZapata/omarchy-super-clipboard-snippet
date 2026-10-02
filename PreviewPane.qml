@@ -1,0 +1,933 @@
+import QtQuick
+import Quickshell.Io
+import qs.Commons
+import qs.Ui
+import "Classify.js" as Classify
+
+// Right-hand preview pane for the clipboard picker.
+// Renders a full preview plus metadata chips, per derived type.
+// `result` is a Fuzzy search result: { row: {entry, content, app, type, ...}, positions }
+Item {
+  id: root
+
+  property var result: null
+  property var entry: result ? result.row.entry : null
+  property string derived: result ? result.row.type : ""
+  // Wired by the picker: opens the current result (browser for links).
+  property var openAction: function() {}
+  // Wired by the picker: copies a string (OCR text, QR payload) to the clipboard.
+  property var copyTextAction: function(text) {}
+  property string pluginDir: ""
+  // Idioma: t() y el diccionario de lang/<idioma>.js los pasa Clipboard.qml.
+  property var tr: function(key, args) { return key }
+  property var strings: null
+  property int fileIndex: 0
+  readonly property var filePaths: entry && entry.type === "files" ? entry.paths || [] : []
+  readonly property string selectedFile: filePaths.length ? filePaths[Math.min(fileIndex, filePaths.length - 1)] : ""
+  property var fileInfo: ({})
+  property int fileRequest: 0
+  onFilePathsChanged: fileIndex = 0
+  onSelectedFileChanged: {
+    fileRequest++
+    fileInfo = ({})
+    fileProbe.running = false
+    fileDelay.restart()
+  }
+  Timer {
+    id: fileDelay
+    interval: 120
+    onTriggered: {
+      if (!root.selectedFile || !root.pluginDir) return
+      fileProbe.command = ["python3", root.pluginDir + "/scripts/file-preview.py", String(root.fileRequest), root.selectedFile]
+      fileProbe.running = true
+    }
+  }
+  Process {
+    id: fileProbe
+    stdout: StdioCollector {
+      waitForEnd: true
+      onStreamFinished: {
+        try {
+          var data = JSON.parse(text)
+          if (String(data.request) === String(root.fileRequest)) root.fileInfo = data.file
+        } catch (e) {}
+      }
+    }
+  }
+  function fileDetails() {
+    var f = fileInfo
+    var parts = []
+    if (f.kind) parts.push(f.kind === "Folder" ? root.tr("file.folder") : f.kind === "Special file" ? root.tr("file.special") : f.kind)
+    if (f.bytes !== undefined && f.kind !== "Folder") parts.push(Classify.formatBytes(f.bytes))
+    if (f.width && f.height) parts.push(f.width + "×" + f.height)
+    if (f.duration) {
+      var seconds = Math.floor(f.duration)
+      parts.push(Math.floor(seconds / 60) + ":" + (seconds % 60 < 10 ? "0" : "") + seconds % 60)
+    }
+    if (f.audio) parts.push(f.audio)
+    if (f.modified) parts.push(root.tr("preview.modified", { date: Classify.formatFullDate(f.modified, root.strings) }))
+    return parts.join(" · ")
+  }
+
+
+  readonly property string font_: Style.font.menuFamily
+  readonly property color fg: Color.menu.text
+  readonly property color mutedFg: Util.alpha(fg, 0.55)
+  readonly property color chipBg: Util.alpha(fg, 0.07)
+  readonly property color lineColor: Util.alpha(fg, 0.16)
+
+  // Textual types render in the scrollable body; every other type has its
+  // own block below. Derived as bindings (not set from onResultChanged) so
+  // the body text and the type can never disagree mid-update, which used to
+  // leave a stale text body visible underneath an image preview.
+  readonly property bool textual: derived === "text" || derived === "code"
+                                  || derived === "email" || derived === "number"
+                                  || derived === "json" || derived === "html"
+  readonly property string bodyText: {
+    if (!entry || !textual) return ""
+    var raw = String(entry.text || "")
+    if (derived === "json") return Classify.prettyJson(raw, 200000) || raw
+    if (derived === "html") return Classify.stripHtml(raw) || raw
+    return raw
+  }
+
+  function rawSafe() {
+    return entry ? String(entry.text || "").trim() : ""
+  }
+
+  function rgbLine() {
+    var rgb = Classify.colorToRgb(rawSafe())
+    return rgb ? "rgb(" + rgb[0] + ", " + rgb[1] + ", " + rgb[2] + ")" : ""
+  }
+
+  function hslLine() {
+    var hsl = Classify.colorToHsl(rawSafe())
+    return hsl ? "hsl(" + hsl[0] + ", " + hsl[1] + "%, " + hsl[2] + "%)" : ""
+  }
+
+  // URL inside the decoded QR payload ("" when the payload is not a link).
+  function qrUrl() {
+    if (!entry || !entry.qr) return ""
+    var url = Classify.extractUrl(entry.qr)
+    if (url) return url
+    var trimmed = String(entry.qr).trim()
+    return root.bareDomainRe.test(trimmed) ? trimmed : ""
+  }
+
+  readonly property var bareDomainRe: /^[a-z0-9][a-z0-9.-]*\.[a-z]{2,}(?:\/[^\s]*)?$/i
+
+  function metaChips() {
+    if (!result) return []
+    var r = result.row
+    var e = r.entry
+    var chips = []
+    if (r.app) chips.push(Classify.prettyApp(r.app))
+    if (e.qr) chips.push("QR: " + Classify.firstLine(e.qr, 40))
+    if (e.ocr) {
+      var ow = Classify.textStats(e.ocr).words
+      chips.push("OCR: " + Classify.plural(ow, "word", root.strings))
+    }
+    if (e.type === "text" && e.text) {
+      var st = Classify.textStats(e.text)
+      chips.push(Classify.plural(st.words, "word", root.strings))
+      if (st.lines > 1) chips.push(Classify.plural(st.lines, "line", root.strings))
+    }
+    if (r.bytes > 0 && e.type !== "files") chips.push(Classify.formatBytes(r.bytes))
+    if (e.type === "image" && e.w && e.h) chips.push(e.w + "×" + e.h)
+    if (e.type === "image") chips.push(e.mime || "image")
+    if (e.pinned) chips.push(root.tr("preview.pinned"))
+    if (r.uses > 0) chips.push(root.tr("preview.pasted", { n: r.uses }))
+    return chips
+  }
+
+  // ------------------------------------------------------------- header
+
+  Row {
+    id: headerRow
+    anchors.top: parent.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    spacing: Style.space(10)
+
+    Rectangle {
+      width: Style.space(38)
+      height: width
+      radius: Style.cornerRadius
+      color: root.chipBg
+      anchors.verticalCenter: parent.verticalCenter
+
+      Text {
+        anchors.centerIn: parent
+        text: Classify.typeIcon(root.derived)
+        color: root.fg
+        font.family: root.font_
+        font.pixelSize: Style.font.heading
+      }
+    }
+
+    Column {
+      width: parent.width - Style.space(48) - badge.width - Style.space(10)
+      anchors.verticalCenter: parent.verticalCenter
+      spacing: Style.space(2)
+
+      Text {
+        width: parent.width
+        text: {
+          if (!root.entry) return ""
+          var e = root.entry
+          if (e.type === "image") return e.qr ? Classify.firstLine(e.qr, 120) : Classify.fileBase(e.path)
+          if (e.type === "files") {
+            var base = Classify.fileBase(e.paths[0])
+            return e.paths.length > 1 ? base + "  " + root.tr("row.more", { n: e.paths.length - 1 }) : base
+          }
+          return Classify.firstLine(e.text, 200)
+        }
+        color: root.fg
+        font.family: root.font_
+        font.pixelSize: Style.font.title
+        font.bold: true
+        textFormat: Text.PlainText
+        elide: Text.ElideRight
+        maximumLineCount: 1
+      }
+
+      Text {
+        width: parent.width
+        text: {
+          if (!root.result) return ""
+          var r = root.result.row
+          var parts = []
+          if (r.ts) parts.push(Classify.formatFullDate(r.ts, root.strings))
+          if (r.bytes) parts.push(Classify.formatBytes(r.bytes))
+          return parts.join("  ·  ")
+        }
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.caption
+        elide: Text.ElideRight
+        maximumLineCount: 1
+      }
+    }
+
+    Rectangle {
+      id: badge
+      anchors.verticalCenter: parent.verticalCenter
+      radius: height / 2
+      color: root.chipBg
+      width: badgeLabel.implicitWidth + Style.space(14)
+      height: Style.space(20)
+
+      Text {
+        id: badgeLabel
+        anchors.centerIn: parent
+        text: Classify.typeIcon(root.derived) + " " + Classify.typeLabel(root.derived, root.strings)
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.caption
+      }
+    }
+  }
+
+  Rectangle {
+    id: divider
+    anchors.top: headerRow.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.topMargin: Style.space(10)
+    height: Style.normalBorderWidth
+    color: root.lineColor
+  }
+
+  // ------------------------------------------------------------- body
+
+  // text-ish body (text / code / json / html / email / number)
+  Flickable {
+    id: textBody
+    anchors.top: divider.bottom
+    anchors.bottom: metaRow.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.topMargin: Style.space(10)
+    anchors.bottomMargin: Style.space(10)
+    visible: root.textual && root.bodyText !== ""
+    clip: true
+    contentWidth: width
+    contentHeight: bodyEdit.implicitHeight
+    boundsBehavior: Flickable.StopAtBounds
+
+    WheelHandler {
+      acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+      onWheel: function(ev) {
+        if (ev.angleDelta.y < 0) textBody.flick(0, -240)
+        else textBody.flick(0, 240)
+        ev.accepted = true
+      }
+    }
+
+    TextEdit {
+      id: bodyEdit
+      width: parent.width
+      readOnly: true
+      activeFocusOnPress: false
+      text: root.bodyText
+      textFormat: TextEdit.PlainText
+      color: root.fg
+      font.family: root.font_
+      font.pixelSize: Style.font.body
+      wrapMode: TextEdit.Wrap
+      selectionColor: Util.alpha(Color.accent, 0.4)
+    }
+  }
+
+  // color body
+  Column {
+    anchors.top: divider.bottom
+    anchors.bottom: metaRow.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.topMargin: Style.space(10)
+    anchors.bottomMargin: Style.space(10)
+    visible: root.derived === "color"
+    spacing: Style.space(14)
+
+    Rectangle {
+      width: Math.min(Style.space(240), parent.width)
+      height: Style.space(120)
+      radius: Style.cornerRadius
+      color: root.hexRe.test(root.rawSafe()) ? root.rawSafe() : "transparent"
+      border.width: Style.normalBorderWidth
+      border.color: root.lineColor
+    }
+
+    Text {
+      text: root.rawSafe()
+      color: root.fg
+      font.family: root.font_
+      font.pixelSize: Style.font.heading
+      font.bold: true
+    }
+
+    Text {
+      visible: root.rgbLine().length > 0
+      text: root.rgbLine()
+      color: root.mutedFg
+      font.family: root.font_
+      font.pixelSize: Style.font.body
+    }
+
+    Text {
+      visible: root.hslLine().length > 0
+      text: root.hslLine()
+      color: root.mutedFg
+      font.family: root.font_
+      font.pixelSize: Style.font.body
+    }
+  }
+
+  // link body
+  Column {
+    anchors.top: divider.bottom
+    anchors.bottom: metaRow.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.topMargin: Style.space(10)
+    anchors.bottomMargin: Style.space(10)
+    visible: root.derived === "link"
+    spacing: Style.space(10)
+
+    Text {
+      text: Classify.urlDomain(root.entry ? String(root.entry.text || "") : "")
+      color: Color.accent
+      font.family: root.font_
+      font.pixelSize: Style.font.display
+      font.bold: true
+      elide: Text.ElideRight
+      width: parent.width
+      maximumLineCount: 1
+    }
+
+    Text {
+      text: root.entry ? Classify.firstLine(String(root.entry.text || ""), 400) : ""
+      color: root.fg
+      font.family: root.font_
+      font.pixelSize: Style.font.body
+      wrapMode: Text.WrapAnywhere
+      width: parent.width
+    }
+
+    Text {
+      text: root.tr("preview.linkHint")
+      color: root.mutedFg
+      font.family: root.font_
+      font.pixelSize: Style.font.caption
+    }
+
+    Rectangle {
+      radius: height / 2
+      color: Util.alpha(Color.accent, 0.15)
+      width: linkOpenLabel.implicitWidth + Style.space(16)
+      height: Style.space(22)
+
+      Row {
+        anchors.centerIn: parent
+        spacing: Style.space(4)
+
+        Text {
+          anchors.verticalCenter: parent.verticalCenter
+          text: "󰌹"
+          color: Color.accent
+          font.family: root.font_
+          font.pixelSize: Style.font.caption
+        }
+
+        Text {
+          id: linkOpenLabel
+          anchors.verticalCenter: parent.verticalCenter
+          text: root.tr("preview.openLink")
+          color: Color.accent
+          font.family: root.font_
+          font.pixelSize: Style.font.caption
+          font.bold: true
+        }
+      }
+
+      MouseArea {
+        anchors.fill: parent
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.openAction()
+      }
+    }
+  }
+
+  // image body
+  Column {
+    anchors.top: divider.bottom
+    anchors.bottom: metaRow.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.topMargin: Style.space(10)
+    anchors.bottomMargin: Style.space(10)
+    visible: root.derived === "image"
+    spacing: Style.space(8)
+
+    // Decoded QR payload sits above the image so it is immediately readable.
+    Rectangle {
+      visible: !!(root.entry && root.entry.qr)
+      width: parent.width
+      height: qrContent.height + Style.space(12)
+      radius: Style.cornerRadius
+      color: root.chipBg
+
+      Column {
+        id: qrContent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.margins: Style.space(6)
+        anchors.topMargin: Style.space(6)
+        anchors.leftMargin: Style.space(6)
+        anchors.rightMargin: Style.space(6)
+        spacing: Style.space(4)
+
+        Row {
+          spacing: Style.space(6)
+
+          Text {
+            text: "󰐲"
+            color: Color.accent
+            font.family: root.font_
+            font.pixelSize: Style.font.body
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Text {
+            text: root.tr("preview.qrContent")
+            color: Color.accent
+            font.family: root.font_
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Rectangle {
+            radius: height / 2
+            color: Util.alpha(Color.accent, 0.15)
+            width: qrCopyLabel.implicitWidth + Style.space(16)
+            height: Style.space(20)
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+              id: qrCopyLabel
+              anchors.centerIn: parent
+              text: "󰆏 " + root.tr("preview.copy")
+              color: Color.accent
+              font.family: root.font_
+              font.pixelSize: Style.font.caption
+              font.bold: true
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.copyTextAction(root.entry ? String(root.entry.qr || "") : "")
+            }
+          }
+        }
+
+        TextEdit {
+          id: qrValue
+          width: parent.width
+          readOnly: true
+          activeFocusOnPress: false
+          text: root.entry && root.entry.qr ? root.entry.qr : ""
+          textFormat: TextEdit.PlainText
+          color: root.fg
+          font.family: root.font_
+          font.pixelSize: Style.font.body
+          font.bold: true
+          wrapMode: TextEdit.WrapAnywhere
+          selectionColor: Util.alpha(Color.accent, 0.4)
+        }
+
+        // QR payloads frequently encode links — offer the open affordance.
+        Rectangle {
+          visible: root.qrUrl().length > 0
+          radius: height / 2
+          color: Util.alpha(Color.accent, 0.15)
+          width: qrOpenLabel.implicitWidth + Style.space(16)
+          height: Style.space(20)
+
+          Row {
+            anchors.centerIn: parent
+            spacing: Style.space(4)
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              text: "󰌹"
+              color: Color.accent
+              font.family: root.font_
+              font.pixelSize: Style.font.caption
+            }
+
+            Text {
+              id: qrOpenLabel
+              anchors.verticalCenter: parent.verticalCenter
+              text: root.tr("preview.openLink")
+              color: Color.accent
+              font.family: root.font_
+              font.pixelSize: Style.font.caption
+              font.bold: true
+            }
+          }
+
+          MouseArea {
+            anchors.fill: parent
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.openAction()
+          }
+        }
+      }
+    }
+
+    // OCR text recovered from the image (searchable like any text clip).
+    Rectangle {
+      id: ocrPanel
+      visible: !!(root.entry && root.entry.ocr)
+      width: parent.width
+      // Never taller than the cap: the body scrolls instead of overflowing
+      // the panel (which used to spill over the image below it).
+      readonly property int maxHeight: Math.max(Style.space(80), Math.floor(parent.height * 0.4))
+      height: Math.min(maxHeight, ocrHeader.height + Style.space(4) + ocrText.implicitHeight + Style.space(12))
+      radius: Style.cornerRadius
+      color: root.chipBg
+      clip: true
+
+      Column {
+        id: ocrContent
+        anchors.left: parent.left
+        anchors.right: parent.right
+        anchors.top: parent.top
+        anchors.topMargin: Style.space(6)
+        anchors.leftMargin: Style.space(6)
+        anchors.rightMargin: Style.space(6)
+        spacing: Style.space(4)
+
+        Row {
+          id: ocrHeader
+          width: parent.width
+          spacing: Style.space(8)
+
+          Text {
+            text: "󰐦 " + root.tr("preview.ocrTitle")
+            color: Color.accent
+            font.family: root.font_
+            font.pixelSize: Style.font.caption
+            font.bold: true
+            anchors.verticalCenter: parent.verticalCenter
+          }
+
+          Rectangle {
+            radius: height / 2
+            color: Util.alpha(Color.accent, 0.15)
+            width: ocrCopyLabel.implicitWidth + Style.space(16)
+            height: Style.space(20)
+            anchors.verticalCenter: parent.verticalCenter
+
+            Text {
+              id: ocrCopyLabel
+              anchors.centerIn: parent
+              text: "󰆏 " + root.tr("preview.copyText")
+              color: Color.accent
+              font.family: root.font_
+              font.pixelSize: Style.font.caption
+              font.bold: true
+            }
+
+            MouseArea {
+              anchors.fill: parent
+              cursorShape: Qt.PointingHandCursor
+              onClicked: root.copyTextAction(root.entry ? String(root.entry.ocr || "") : "")
+            }
+          }
+        }
+
+        Flickable {
+          id: ocrFlick
+          width: parent.width
+          height: ocrPanel.height - ocrHeader.height - Style.space(4) - Style.space(12)
+          clip: true
+          contentWidth: width
+          contentHeight: ocrText.implicitHeight
+          boundsBehavior: Flickable.StopAtBounds
+
+          WheelHandler {
+            acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+            onWheel: function(ev) {
+              if (ev.angleDelta.y < 0) ocrFlick.flick(0, -240)
+              else ocrFlick.flick(0, 240)
+              ev.accepted = true
+            }
+          }
+
+          TextEdit {
+            id: ocrText
+            width: parent.width
+            readOnly: true
+            activeFocusOnPress: false
+            text: root.entry && root.entry.ocr ? root.entry.ocr : ""
+            textFormat: TextEdit.PlainText
+            color: root.fg
+            font.family: root.font_
+            font.pixelSize: Style.font.caption
+            wrapMode: TextEdit.Wrap
+            selectionColor: Util.alpha(Color.accent, 0.4)
+          }
+        }
+      }
+    }
+
+    Item {
+      width: parent.width
+      height: Math.max(0, parent.height
+             - (root.entry && root.entry.qr ? qrContent.height + Style.space(12) + Style.space(8) : 0)
+             - (root.entry && root.entry.ocr ? ocrPanel.height + Style.space(8) : 0)
+             - infoLabel.height - Style.space(12))
+
+      Image {
+        id: img
+        anchors.centerIn: parent
+        width: parent.width
+        height: parent.height
+        source: root.entry && root.entry.path ? Util.fileUrl(root.entry.path) : ""
+        fillMode: Image.PreserveAspectFit
+        asynchronous: true
+        smooth: true
+        cache: false
+      }
+
+      Rectangle {
+        anchors.fill: img
+        color: "transparent"
+        border.width: Style.normalBorderWidth
+        border.color: root.lineColor
+        radius: Style.space(4)
+        visible: img.status === Image.Ready
+      }
+
+      Text {
+        anchors.centerIn: parent
+        visible: img.status === Image.Error || img.status === Image.Null
+        text: root.tr("preview.unavailable")
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.body
+      }
+    }
+
+    Text {
+      id: infoLabel
+      text: {
+        if (!root.entry) return ""
+        var e = root.entry
+        var dims = e.w && e.h ? e.w + " × " + e.h + " px  ·  " : ""
+        return dims + (e.mime || "image") + (e.bytes ? "  ·  " + Classify.formatBytes(e.bytes) : "")
+      }
+      color: root.mutedFg
+      font.family: root.font_
+      font.pixelSize: Style.font.caption
+    }
+  }
+
+  // File content is bounded by a scrollable viewport, including long paths
+  // and text snippets. Selecting another file loads its details on demand.
+  Flickable {
+    id: filesBody
+    anchors.top: divider.bottom
+    anchors.bottom: metaRow.top
+    anchors.left: parent.left
+    anchors.right: parent.right
+    anchors.topMargin: Style.space(10)
+    anchors.bottomMargin: Style.space(10)
+    visible: root.derived === "files"
+    clip: true
+    contentWidth: width
+    contentHeight: fileContent.height
+    boundsBehavior: Flickable.StopAtBounds
+    Connections {
+      target: root
+      function onSelectedFileChanged() { filesBody.contentY = 0 }
+    }
+    WheelHandler {
+      acceptedDevices: PointerDevice.Mouse | PointerDevice.TouchPad
+      onWheel: function(ev) {
+        filesBody.flick(0, ev.angleDelta.y < 0 ? -240 : 240)
+        ev.accepted = true
+      }
+    }
+    Column {
+      id: fileContent
+      width: filesBody.width
+      spacing: Style.space(8)
+      Row {
+        width: parent.width
+        spacing: Style.space(8)
+        visible: root.filePaths.length > 1
+        Repeater {
+          model: [root.tr("preview.previous"), root.tr("preview.next")]
+          delegate: Rectangle {
+            required property int index
+            required property string modelData
+            width: navLabel.implicitWidth + Style.space(16)
+            height: Style.space(24)
+            color: root.chipBg
+            radius: Style.cornerRadius
+            Text {
+              id: navLabel
+              anchors.centerIn: parent
+              text: modelData
+              color: root.fg
+              font.family: root.font_
+              font.pixelSize: Style.font.caption
+            }
+            MouseArea {
+              anchors.fill: parent
+              onClicked: root.fileIndex = (root.fileIndex + (index === 0 ? -1 : 1) + root.filePaths.length) % root.filePaths.length
+            }
+          }
+        }
+        Text {
+          text: (root.fileIndex + 1) + " / " + root.filePaths.length
+          color: root.mutedFg
+          font.family: root.font_
+          font.pixelSize: Style.font.caption
+        }
+      }
+      Text {
+        width: parent.width
+        text: Classify.fileBase(root.selectedFile)
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAnywhere
+        color: root.fg
+        font.family: root.font_
+        font.pixelSize: Style.font.body
+        font.bold: true
+      }
+      Rectangle {
+        id: thumbnailPanel
+        readonly property bool loading: fileDelay.running || fileProbe.running || fileThumbnail.status === Image.Loading
+        width: parent.width
+        height: visible ? Math.min(Style.space(240), filesBody.height * 0.55) : 0
+        visible: loading || !!root.fileInfo.thumbnail
+        color: root.chipBg
+        radius: Style.cornerRadius
+        clip: true
+        Image {
+          id: fileThumbnail
+          anchors.fill: parent
+          visible: status === Image.Ready && !thumbnailPanel.loading
+          source: root.fileInfo.thumbnail || ""
+          fillMode: Image.PreserveAspectFit
+          asynchronous: true
+          sourceSize.width: 640
+          sourceSize.height: 360
+        }
+        Column {
+          anchors.centerIn: parent
+          spacing: Style.space(8)
+          visible: thumbnailPanel.loading
+          Text {
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: "◌"
+            color: Color.accent
+            font.pixelSize: Style.space(28)
+            NumberAnimation on rotation {
+              from: 0
+              to: 360
+              duration: 1000
+              loops: Animation.Infinite
+              running: thumbnailPanel.loading && filesBody.visible
+            }
+          }
+          Text {
+            text: root.tr("preview.loading")
+            color: root.mutedFg
+            font.family: root.font_
+            font.pixelSize: Style.font.caption
+          }
+        }
+        Text {
+          anchors.centerIn: parent
+          visible: !thumbnailPanel.loading && fileThumbnail.status === Image.Error
+          text: root.tr("preview.thumbUnavailable")
+          color: root.mutedFg
+          font.family: root.font_
+          font.pixelSize: Style.font.caption
+        }
+      }
+      Text {
+        width: parent.width
+        text: root.fileInfo.error || root.fileDetails() || (thumbnailPanel.loading ? root.tr("preview.fileLoading") : root.tr("preview.fileUnavailable"))
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAnywhere
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.caption
+      }
+      Text {
+        width: parent.width
+        text: root.selectedFile
+        textFormat: Text.PlainText
+        wrapMode: Text.WrapAnywhere
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.caption
+      }
+      TextEdit {
+        width: parent.width
+        visible: text.length > 0
+        text: root.fileInfo.text || root.fileInfo.details || ""
+        textFormat: TextEdit.PlainText
+        readOnly: true
+        activeFocusOnPress: false
+        wrapMode: TextEdit.WrapAnywhere
+        color: root.fg
+        font.family: root.font_
+        font.pixelSize: Style.font.body
+      }
+      Text {
+        visible: !!root.fileInfo.truncated
+        text: root.tr("preview.limited")
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.caption
+      }
+    }
+  }
+
+  // ------------------------------------------------------------- meta chips
+
+  // Flow: si las insignias no caben (modo compacto) bajan a otra línea.
+  Flow {
+    id: metaRow
+    anchors.bottom: parent.bottom
+    anchors.left: parent.left
+    anchors.right: parent.right
+    spacing: Style.space(6)
+
+    // Tipo: icono y texto en la misma insignia.
+    Rectangle {
+      radius: height / 2
+      color: root.chipBg
+      width: typeChipText.implicitWidth + Style.space(14)
+      height: Style.space(20)
+
+      Text {
+        id: typeChipText
+        anchors.centerIn: parent
+        text: Classify.typeIcon(root.derived) + "  " + Classify.typeLabel(root.derived, root.strings)
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.caption
+      }
+    }
+
+    Repeater {
+      model: root.metaChips()
+
+      delegate: Rectangle {
+        required property var modelData
+        property string chipText: String(modelData)
+
+        radius: height / 2
+        color: root.chipBg
+        width: chipLabel.implicitWidth + Style.space(14)
+        height: Style.space(20)
+
+        Text {
+          id: chipLabel
+          anchors.centerIn: parent
+          text: parent.chipText
+          textFormat: Text.PlainText
+          color: root.mutedFg
+          font.family: root.font_
+          font.pixelSize: Style.font.caption
+        }
+      }
+    }
+
+    // Solo en clips de texto: recordar que se editan con Ctrl+E (o F2).
+    Row {
+      visible: !!root.entry && root.entry.type === "text"
+      spacing: Style.space(4)
+
+      Rectangle {
+        radius: Style.space(3)
+        color: root.chipBg
+        border.width: 1
+        border.color: root.lineColor
+        width: editKey.implicitWidth + Style.space(10)
+        height: Style.space(18)
+        anchors.verticalCenter: parent.verticalCenter
+
+        Text {
+          id: editKey
+          anchors.centerIn: parent
+          text: "ctrl+e"
+          color: root.mutedFg
+          font.family: root.font_
+          font.pixelSize: Style.font.caption
+        }
+      }
+
+      Text {
+        anchors.verticalCenter: parent.verticalCenter
+        text: root.tr("hint.edit")
+        color: root.mutedFg
+        font.family: root.font_
+        font.pixelSize: Style.font.caption
+      }
+    }
+  }
+
+  readonly property var hexRe: /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i
+}

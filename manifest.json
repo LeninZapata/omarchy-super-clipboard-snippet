@@ -1,0 +1,19 @@
+{
+  "schemaVersion": 1,
+  "id": "leninzapata.super-clipboard-snippet",
+  "name": "Super Clipboard-Snippet",
+  "version": "0.1.0",
+  "author": "leninzapata",
+  "license": "MIT",
+  "description": "Clipboard history and snippets in one picker: fuzzy search, pins and rich previews, with Clipboard and Snippets tabs switched by the arrow keys",
+  "kinds": [
+    "overlay"
+  ],
+  "keepLoaded": true,
+  "entryPoints": {
+    "overlay": "Clipboard.qml"
+  },
+  "omarchy": {
+    "clonedFrom": "omarchy.clipboard"
+  }
+}
