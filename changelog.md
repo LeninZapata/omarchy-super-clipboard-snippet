@@ -24,3 +24,4 @@
 - [update] Under each clip only the time and size; the details stay in the preview
 - [fix] Pins are no longer lost to the limits or when clearing the history
 - [fix] Copied text is sent to wl-copy over stdin, never as a process argument other users could read
+- [fix] The snippet preview and every text that shows clip or snippet content render as plain text, so no remote image can load (and leak {clipboard})

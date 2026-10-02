@@ -1502,6 +1502,7 @@ Item {
           color: current ? root.selectedBackground : "transparent"
 
           Text {
+            textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
             anchors.left: parent.left
             anchors.leftMargin: Style.space(10)
             anchors.right: quickSlug.left
@@ -1515,6 +1516,7 @@ Item {
           }
 
           Text {
+            textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
             id: quickSlug
             anchors.right: parent.right
             anchors.rightMargin: Style.space(10)
@@ -1868,6 +1870,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                 id: varExample
                 anchors.right: parent.right
                 anchors.rightMargin: Style.space(8)
@@ -2445,6 +2448,7 @@ Item {
               spacing: Style.space(2)
 
               Text {
+                textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                 id: searchText
                 width: Math.min(implicitWidth, parent.width - Style.space(6))
                 text: root.filterText || root.t("search.placeholder") + "   (type:image  app:firefox  <2h  is:pinned)"
@@ -3042,6 +3046,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
               id: noteText
               anchors.top: noteTitle.bottom
               anchors.topMargin: Style.space(4)
@@ -3172,6 +3177,7 @@ Item {
             }
 
             Text {
+              textFormat: Text.PlainText
               text: root.history.length === 0
                     ? root.t("empty.clipboard")
                     : root.t("empty.noMatches", { q: root.filterText })
@@ -3218,6 +3224,7 @@ Item {
               spacing: Style.space(2)
 
               Text {
+                textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                 width: Math.min(implicitWidth, parent.width - Style.space(6))
                 text: root.snipQuery || root.t("snip.search") + "   (" + root.t("snip.searchHint") + ")"
                 color: root.foreground
@@ -3313,6 +3320,7 @@ Item {
                   spacing: Style.space(2)
 
                   Text {
+                    textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                     width: parent.width
                     text: snipRow.modelData.name || snipRow.modelData.slug || "—"
                     color: snipRow.current ? root.selectedText : root.foreground
@@ -3322,6 +3330,7 @@ Item {
                   }
 
                   Text {
+                    textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                     width: parent.width
                     visible: !!snipRow.modelData.slug
                     text: snipRow.modelData.slug
@@ -3362,6 +3371,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                 width: parent.width
                 text: root.snippets.length === 0 ? root.t("snip.empty") : root.t("snip.noMatches", { q: root.snipQuery })
                 color: root.foreground
@@ -3393,6 +3403,7 @@ Item {
               visible: !root.snipEditing && root.currentSnippet !== null
 
               Text {
+                textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                 id: snipPreviewName
                 anchors.top: parent.top
                 anchors.left: parent.left
@@ -3406,6 +3417,7 @@ Item {
               }
 
               Text {
+                textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
                 id: snipPreviewSlug
                 anchors.top: snipPreviewName.bottom
                 anchors.topMargin: Style.space(2)
@@ -3449,8 +3461,12 @@ Item {
                   Text {
                     id: snipRendered
                     width: parent.width
+                    // Texto plano a propósito: Qt carga solo las imágenes remotas de
+                    // Markdown/HTML, y un snippet importado con {clipboard} dentro de
+                    // la URL de una imagen filtraría el portapapeles con solo
+                    // seleccionarlo. Además es lo que de verdad se pega (las marcas tal cual).
                     text: root.renderSnippet(root.currentSnippet)
-                    textFormat: Text.MarkdownText
+                    textFormat: Text.PlainText
                     color: root.foreground
                     linkColor: root.accent
                     font.family: root.fontFamily

@@ -300,6 +300,7 @@ Item {
     }
 
     Text {
+      textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
       text: root.rawSafe()
       color: root.fg
       font.family: root.font_
@@ -336,6 +337,7 @@ Item {
     spacing: Style.space(10)
 
     Text {
+      textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
       text: Classify.urlDomain(root.entry ? String(root.entry.text || "") : "")
       color: Color.accent
       font.family: root.font_
@@ -347,6 +349,7 @@ Item {
     }
 
     Text {
+      textFormat: Text.PlainText // contenido ajeno: nunca como HTML/Markdown
       text: root.entry ? Classify.firstLine(String(root.entry.text || ""), 400) : ""
       color: root.fg
       font.family: root.font_
