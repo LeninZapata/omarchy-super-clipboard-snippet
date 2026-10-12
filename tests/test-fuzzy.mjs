@@ -94,6 +94,16 @@ test("searchRows: always newest first, pins and pastes do not reorder", () => {
   assert.deepEqual(Array.from(searched, r => r.row.content), ["pasted twice, 5 min ago"])
 })
 
+test("searchRows: the row cap never hides an old pin", () => {
+  const now = 1000000
+  const rows = []
+  for (let i = 0; i < 5; i++)
+    rows.push({ entry: {}, content: "clip " + i, app: "", type: "text", ts: now - i, pinned: false, uses: 0, bytes: 3 })
+  rows.push({ entry: { pinned: true }, content: "old pin", app: "", type: "text", ts: now - 86400 * 30, pinned: true, uses: 0, bytes: 3 })
+  const res = Fuzzy.searchRows(rows, "", now, 3)
+  assert.deepEqual(Array.from(res, r => r.row.content), ["clip 0", "clip 1", "clip 2", "old pin"])
+})
+
 test("searchRows fuzzy ranks match above recency when strong", () => {
   const now = 1000000
   const rows = [

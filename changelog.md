@@ -2,6 +2,10 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.1 - 2026-10-12 07:13
+---
+- [fix] Old pins no longer vanish from the list once the history grows past the row cap ("Rows shown"); they were kept in the history but cut from the view
+
 ## 0.2.0 - 2026-10-02 12:15
 ---
 - [feature] "Hide the content preview" setting: only the list, in a narrower window, with the type filters on their own line under the search

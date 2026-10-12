@@ -272,9 +272,20 @@ function searchRows(rows, queryStr, now, limit) {
     return (b.row.ts || 0) - (a.row.ts || 0)
   })
 
+  // Los pines no cuentan para el tope de filas: el historial los guarda más
+  // allá del límite, y cortar por fecha escondía los pines viejos de la lista.
   var cap = limit === undefined ? 200 : limit
-  if (results.length > cap) results.length = cap
-  return results
+  if (results.length <= cap) return results
+  var kept = []
+  var unpinned = 0
+  for (var k = 0; k < results.length; k++) {
+    var pinned = !!(results[k].row.entry && results[k].row.entry.pinned)
+    if (pinned || unpinned < cap) {
+      if (!pinned) unpinned++
+      kept.push(results[k])
+    }
+  }
+  return kept
 }
 
 // Escape for QML StyledText (HTML-ish).
