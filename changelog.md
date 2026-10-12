@@ -4,7 +4,7 @@
 
 ## 0.2.1 - 2026-10-12 07:13
 ---
-- [fix] Old pins no longer vanish from the list once the history grows past the row cap ("Rows shown"); they were kept in the history but cut from the view
+- [fix] Old pins no longer vanish from the list once the history grows past the row cap (`maxRows`); they were kept in the history but cut from the view
 
 ## 0.2.0 - 2026-10-02 12:15
 ---
