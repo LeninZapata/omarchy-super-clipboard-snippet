@@ -2,6 +2,13 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.3 - 2026-10-13 07:48
+---
+- [fix] No native Qt text input anywhere: every field (quick snippets search, actions filter, clear-history prompt, clip/note editor, snippet name, slug and body) is the plugin's own PlainEdit, so no field reads foreign clipboard text, open or hidden
+- [new] PlainEdit.qml + Editing.js: single and multi-line editing with cursor, selection (keyboard and mouse), word moves, wrapping, undo/redo
+- [update] Ctrl+V inside a field pastes the latest text clip from the history; Ctrl+C / Ctrl+X copy the selection
+- [update] README: how the text fields work
+
 ## 0.2.2 - 2026-10-13 00:15
 ---
 - [fix] Editable fields (quick snippets search, actions filter, clear-history prompt, clip and snippet editors) only exist while their panel is open: a hidden but live text field re-read foreign clipboard text on every change, with no size or time limit

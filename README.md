@@ -175,6 +175,11 @@ In the editor, the toolbar wraps the selection in **bold**, *italic*, `code`, a 
 block or a list, and inserts variables. `Tab` moves to the next field,
 `Ctrl+B` / `Ctrl+I` format the selection, `Ctrl+Enter` saves and `Esc` cancels.
 
+The plugin's text fields are drawn by the plugin itself, not native Qt inputs, so they
+never read the system clipboard: `Ctrl+V` inside them pastes the latest text clip from
+the history (already captured, with its size limits), and `Ctrl+C` / `Ctrl+X` copy the
+selection.
+
 ### Variables
 
 <p align="center">
@@ -294,6 +299,8 @@ What changed in each version is in [changelog.md](changelog.md).
 ├── Classify.js        # clip types, dates, plurals, colors
 ├── Actions.js         # actions per clip type and text transforms
 ├── Snippets.js        # snippets, slug search and the variables engine
+├── PlainEdit.qml      # the plugin's own text field (no native Qt input)
+├── Editing.js         # its editing logic: cursor, selection, words, wrapping
 ├── lang/              # en.js (default) and es.js
 ├── capture.py         # clipboard watcher: one JSON line per clip (QR + OCR)
 ├── paste-entry.sh     # copy and paste a clip into the focused window

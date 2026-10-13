@@ -467,11 +467,12 @@ Item {
   }
 
   // ------------------------------------------------------------ campos editables
-  // Solo existen mientras su panel está abierto: un TextInput vivo vuelve a leer
+  // Todos son PlainEdit, nunca TextInput/TextEdit: un campo nativo editable lee
   // el texto del portapapeles ajeno en cada cambio (canPaste), sin tope de
-  // tamaño ni de tiempo, aunque esté oculto, y el overlay es keepLoaded. Cada
-  // campo vive en un Loader; estas propiedades apuntan a la instancia, o a null
-  // con el panel cerrado (por eso se abre el panel ANTES de tocar su texto).
+  // tamaño ni de tiempo, abierto u oculto. Además cada uno vive en un Loader
+  // activo solo con su panel abierto (cada apertura empieza limpia); estas
+  // propiedades apuntan a la instancia, o a null con el panel cerrado (por eso
+  // se abre el panel ANTES de tocar su texto).
   readonly property Item quickInput: quickInputLoader.item
   readonly property Item actionsFilter: actionsFilterLoader.item
   readonly property Item clearInput: clearInputLoader.item
@@ -1480,16 +1481,21 @@ Item {
           anchors.leftMargin: Style.space(10)
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          sourceComponent: TextInput {
+          sourceComponent: PlainEdit {
             color: root.foreground
-            font.family: root.fontFamily
-            font.pixelSize: Style.font.title
+            fontFamily: root.fontFamily
+            selectionColor: Util.alpha(root.accent, 0.35)
+            pasteText: root.latestClipText
+            copyText: function(text) { root.writeClipboard(text, false) }
+            fontPixelSize: Style.font.title
+            placeholder: root.t("quick.placeholder")
+            placeholderColor: Util.alpha(root.mutedFg, 0.6)
             onTextChanged: {
               root.quickQuery = text
               root.quickIndex = 0
             }
 
-            Keys.onPressed: function(event) {
+            onPreKey: function(event) {
               var n = root.quickResults.length
               if (event.key === Qt.Key_Escape) {
                 root.closeQuick()
@@ -1506,15 +1512,6 @@ Item {
                 root.pasteSnippet(root.quickResults[root.quickIndex], (event.modifiers & Qt.ShiftModifier) !== 0)
                 event.accepted = true
               }
-            }
-
-            Text {
-              anchors.verticalCenter: parent.verticalCenter
-              visible: parent.text.length === 0
-              text: root.t("quick.placeholder")
-              color: root.mutedFg
-              opacity: 0.6
-              font: parent.font
             }
           }
         }
@@ -2012,16 +2009,21 @@ Item {
               anchors.right: parent.right
               anchors.rightMargin: Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
-              sourceComponent: TextInput {
+              sourceComponent: PlainEdit {
                 color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
+                fontFamily: root.fontFamily
+                selectionColor: Util.alpha(root.accent, 0.35)
+                pasteText: root.latestClipText
+                copyText: function(text) { root.writeClipboard(text, false) }
+                fontPixelSize: Style.font.body
+                placeholder: root.t("actions.filter")
+                placeholderColor: Util.alpha(root.mutedFg, 0.6)
                 onTextChanged: {
                   root.actionsQuery = text
                   root.actionCursor = 0
                 }
 
-                Keys.onPressed: function(event) {
+                onPreKey: function(event) {
                   var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
                   if (event.key === Qt.Key_Escape || (ctrl && event.key === Qt.Key_Period)) {
                     root.closeActions()
@@ -2037,15 +2039,6 @@ Item {
                     if (a) root.runAction(a.id)
                     event.accepted = true
                   }
-                }
-
-                Text {
-                  anchors.verticalCenter: parent.verticalCenter
-                  visible: parent.text.length === 0
-                  text: root.t("actions.filter")
-                  color: root.mutedFg
-                  opacity: 0.6
-                  font: parent.font
                 }
               }
             }
@@ -2186,14 +2179,15 @@ Item {
                 anchors.fill: parent
                 anchors.leftMargin: Style.space(10)
                 anchors.rightMargin: Style.space(10)
-                sourceComponent: TextInput {
-                  verticalAlignment: TextInput.AlignVCenter
+                sourceComponent: PlainEdit {
                   color: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  selectByMouse: true
+                  fontFamily: root.fontFamily
+                  selectionColor: Util.alpha(root.accent, 0.35)
+                  pasteText: root.latestClipText
+                  copyText: function(text) { root.writeClipboard(text, false) }
+                  fontPixelSize: Style.font.body
 
-                  Keys.onPressed: function(event) {
+                  onPreKey: function(event) {
                     if (event.key === Qt.Key_Escape) {
                       root.cancelClearHistory()
                       event.accepted = true
@@ -3237,48 +3231,32 @@ Item {
               font.pixelSize: Style.font.caption
             }
 
-            Flickable {
-              id: editorFlick
+            Loader {
+              id: editorLoader
+              active: root.editing
               anchors.top: editorTitle.bottom
               anchors.topMargin: Style.space(10)
               anchors.left: parent.left
               anchors.right: parent.right
               anchors.bottom: parent.bottom
               anchors.margins: Style.space(12)
-              clip: true
-              contentWidth: width
-              contentHeight: editor ? editor.contentHeight : 0
-              boundsBehavior: Flickable.StopAtBounds
+              sourceComponent: PlainEdit {
+                color: root.foreground
+                fontFamily: root.fontFamily
+                selectionColor: Util.alpha(root.accent, 0.35)
+                pasteText: root.latestClipText
+                copyText: function(text) { root.writeClipboard(text, false) }
+                multiline: true
+                fontPixelSize: Style.font.body
 
-              function ensureVisible(r) {
-                if (contentY >= r.y) contentY = r.y
-                else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
-              }
-
-              Loader {
-                id: editorLoader
-                active: root.editing
-                sourceComponent: TextEdit {
-                  width: editorFlick.width
-                  wrapMode: TextEdit.Wrap
-                  selectByMouse: true
-                  persistentSelection: true
-                  color: root.foreground
-                  selectionColor: Util.alpha(root.accent, 0.35)
-                  selectedTextColor: root.foreground
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.body
-                  onCursorRectangleChanged: editorFlick.ensureVisible(cursorRectangle)
-
-                  Keys.onPressed: function(event) {
-                    var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
-                    if (event.key === Qt.Key_Escape) {
-                      root.cancelEdit()
-                      event.accepted = true
-                    } else if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
-                      root.saveEdit()
-                      event.accepted = true
-                    }
+                onPreKey: function(event) {
+                  var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+                  if (event.key === Qt.Key_Escape) {
+                    root.cancelEdit()
+                    event.accepted = true
+                  } else if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                    root.saveEdit()
+                    event.accepted = true
                   }
                 }
               }
@@ -3706,14 +3684,18 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: Style.space(10)
                     anchors.rightMargin: Style.space(10)
-                    sourceComponent: TextInput {
-                      verticalAlignment: TextInput.AlignVCenter
+                    sourceComponent: PlainEdit {
                       color: root.foreground
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
-                      selectByMouse: true
-                      KeyNavigation.tab: snipSlugInput
-                      Keys.onPressed: function(event) { snipEditor.commonKeys(event) }
+                      fontFamily: root.fontFamily
+                      selectionColor: Util.alpha(root.accent, 0.35)
+                      pasteText: root.latestClipText
+                      copyText: function(text) { root.writeClipboard(text, false) }
+                      fontPixelSize: Style.font.body
+                      nextField: snipSlugInput
+
+                      onPreKey: function(event) {
+                        snipEditor.commonKeys(event)
+                      }
                     }
                   }
                 }
@@ -3742,15 +3724,19 @@ Item {
                     anchors.fill: parent
                     anchors.leftMargin: Style.space(10)
                     anchors.rightMargin: Style.space(10)
-                    sourceComponent: TextInput {
-                      verticalAlignment: TextInput.AlignVCenter
+                    sourceComponent: PlainEdit {
                       color: root.accent
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
-                      selectByMouse: true
-                      KeyNavigation.tab: snipBodyEdit
-                      KeyNavigation.backtab: snipNameInput
-                      Keys.onPressed: function(event) { snipEditor.commonKeys(event) }
+                      fontFamily: root.fontFamily
+                      selectionColor: Util.alpha(root.accent, 0.35)
+                      pasteText: root.latestClipText
+                      copyText: function(text) { root.writeClipboard(text, false) }
+                      fontPixelSize: Style.font.body
+                      nextField: snipBodyEdit
+                      prevField: snipNameInput
+
+                      onPreKey: function(event) {
+                        snipEditor.commonKeys(event)
+                      }
                     }
                   }
                 }
@@ -3840,42 +3826,26 @@ Item {
                 border.width: 1
                 border.color: snipBodyEdit && snipBodyEdit.activeFocus ? Util.alpha(root.accent, 0.6) : root.lineColor
 
-                Flickable {
-                  id: snipBodyFlick
+                Loader {
+                  id: snipBodyEditLoader
+                  active: root.snipEditing
                   anchors.fill: parent
                   anchors.margins: Style.space(10)
-                  clip: true
-                  contentWidth: width
-                  contentHeight: snipBodyEdit ? snipBodyEdit.contentHeight : 0
-                  boundsBehavior: Flickable.StopAtBounds
+                  sourceComponent: PlainEdit {
+                    color: root.foreground
+                    fontFamily: root.fontFamily
+                    selectionColor: Util.alpha(root.accent, 0.35)
+                    pasteText: root.latestClipText
+                    copyText: function(text) { root.writeClipboard(text, false) }
+                    multiline: true
+                    fontPixelSize: Style.font.body
+                    prevField: snipSlugInput
 
-                  function ensureVisible(r) {
-                    if (contentY >= r.y) contentY = r.y
-                    else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
-                  }
-
-                  Loader {
-                    id: snipBodyEditLoader
-                    active: root.snipEditing
-                    sourceComponent: TextEdit {
-                      width: snipBodyFlick.width
-                      wrapMode: TextEdit.Wrap
-                      selectByMouse: true
-                      persistentSelection: true
-                      color: root.foreground
-                      selectionColor: Util.alpha(root.accent, 0.35)
-                      selectedTextColor: root.foreground
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
-                      onCursorRectangleChanged: snipBodyFlick.ensureVisible(cursorRectangle)
-                      KeyNavigation.backtab: snipSlugInput
-
-                      Keys.onPressed: function(event) {
-                        var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
-                        if (ctrl && event.key === Qt.Key_B) { root.wrapSelection("**", "**"); event.accepted = true }
-                        else if (ctrl && event.key === Qt.Key_I) { root.wrapSelection("_", "_"); event.accepted = true }
-                        else snipEditor.commonKeys(event)
-                      }
+                    onPreKey: function(event) {
+                      var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+                      if (ctrl && event.key === Qt.Key_B) { root.wrapSelection("**", "**"); event.accepted = true }
+                      else if (ctrl && event.key === Qt.Key_I) { root.wrapSelection("_", "_"); event.accepted = true }
+                      else snipEditor.commonKeys(event)
                     }
                   }
                 }
