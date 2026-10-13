@@ -369,28 +369,30 @@ Item {
 
   function newSnippet() {
     root.snipEditId = ""
+    root.snipEditing = true
     snipNameInput.text = ""
     snipSlugInput.text = ""
     snipBodyEdit.text = ""
-    root.snipEditing = true
-    Qt.callLater(function() { snipNameInput.forceActiveFocus() })
+    Qt.callLater(function() { if (snipNameInput) snipNameInput.forceActiveFocus() })
   }
 
   function editSnippet() {
     var s = root.currentSnippet
     if (!s) return
     root.snipEditId = s.id
+    root.snipEditing = true
     snipNameInput.text = s.name
     snipSlugInput.text = s.slug
     snipBodyEdit.text = s.body
-    root.snipEditing = true
     Qt.callLater(function() {
+      if (!snipBodyEdit) return
       snipBodyEdit.forceActiveFocus()
       snipBodyEdit.cursorPosition = snipBodyEdit.length
     })
   }
 
   function saveSnippet() {
+    if (!root.snipEditing) return
     if (!snipNameInput.text.trim() && !snipBodyEdit.text.trim()) { root.cancelSnippetEdit(); return }
     var r = Snippets.upsert(root.snippets, {
       id: root.snipEditId || undefined,
@@ -432,6 +434,7 @@ Item {
   // Botones de Markdown del editor: envuelven la selección (o dejan el cursor
   // entre los marcadores si no hay selección).
   function wrapSelection(prefix, suffix) {
+    if (!snipBodyEdit) return
     var s = snipBodyEdit.selectionStart, e = snipBodyEdit.selectionEnd
     var sel = snipBodyEdit.getText(s, e)
     snipBodyEdit.remove(s, e)
@@ -442,6 +445,7 @@ Item {
   }
 
   function listifySelection() {
+    if (!snipBodyEdit) return
     var text = snipBodyEdit.text
     var s = snipBodyEdit.selectionStart, e = snipBodyEdit.selectionEnd
     var start = text.lastIndexOf("\n", s - 1) + 1
@@ -454,12 +458,27 @@ Item {
   }
 
   function insertVariable(name) {
+    if (!snipBodyEdit) return
     var at = snipBodyEdit.cursorPosition
     snipBodyEdit.insert(at, "{" + name + "}")
     snipBodyEdit.cursorPosition = at + name.length + 2
     root.varsOpen = false
     snipBodyEdit.forceActiveFocus()
   }
+
+  // ------------------------------------------------------------ campos editables
+  // Solo existen mientras su panel está abierto: un TextInput vivo vuelve a leer
+  // el texto del portapapeles ajeno en cada cambio (canPaste), sin tope de
+  // tamaño ni de tiempo, aunque esté oculto, y el overlay es keepLoaded. Cada
+  // campo vive en un Loader; estas propiedades apuntan a la instancia, o a null
+  // con el panel cerrado (por eso se abre el panel ANTES de tocar su texto).
+  readonly property Item quickInput: quickInputLoader.item
+  readonly property Item actionsFilter: actionsFilterLoader.item
+  readonly property Item clearInput: clearInputLoader.item
+  readonly property Item editor: editorLoader.item
+  readonly property Item snipNameInput: snipNameInputLoader.item
+  readonly property Item snipSlugInput: snipSlugInputLoader.item
+  readonly property Item snipBodyEdit: snipBodyEditLoader.item
 
   // ------------------------------------------------------------ popup rápido de snippets
   // Ventanita junto al mouse con solo buscador + lista: se abre con el atajo
@@ -480,12 +499,11 @@ Item {
     if (root.opened) root.close()
     root.quickQuery = ""
     root.quickIndex = 0
-    quickInput.text = ""
     root.quickX = Math.max(0, (quickPanel.width - root.quickWidth) / 2)
     root.quickY = Math.max(0, (quickPanel.height - root.quickHeight) / 3)
     quickCursorProc.running = true
     root.quickOpen = true
-    Qt.callLater(function() { quickInput.forceActiveFocus() })
+    Qt.callLater(function() { if (quickInput) quickInput.forceActiveFocus() })
     return "ok"
   }
 
@@ -516,7 +534,7 @@ Item {
 
   function closeVars() {
     root.varsOpen = false
-    if (root.snipEditing) snipBodyEdit.forceActiveFocus()
+    if (root.snipEditing && snipBodyEdit) snipBodyEdit.forceActiveFocus()
     else keyCatcher.forceActiveFocus()
   }
 
@@ -961,13 +979,13 @@ Item {
   function requestClearHistory() {
     if (root.history.length === root.pinIds.length) return // solo hay pines
     root.cancelEdit()
-    clearInput.text = ""
     root.clearPromptOpen = true
-    Qt.callLater(function() { clearInput.forceActiveFocus() })
+    clearInput.text = ""
+    Qt.callLater(function() { if (clearInput) clearInput.forceActiveFocus() })
   }
 
   function clearWordTyped() {
-    return clearInput.text.trim().toLowerCase() === root.clearWord
+    return !!clearInput && clearInput.text.trim().toLowerCase() === root.clearWord
   }
 
   // ------------------------------------------------------------ actions (Ctrl+.)
@@ -988,10 +1006,11 @@ Item {
     var items = []
     for (var i = 0; i < ids.length; i++) items.push({ id: ids[i], icon: Actions.ICONS[ids[i]] || "", label: root.t("action." + ids[i]) })
     root.actionItems = items
-    actionsFilter.text = ""
+    root.actionsQuery = ""
     root.actionCursor = 0
     root.actionsOpen = true
-    Qt.callLater(function() { actionsFilter.forceActiveFocus() })
+    actionsFilter.text = ""
+    Qt.callLater(function() { if (actionsFilter) actionsFilter.forceActiveFocus() })
   }
 
   function closeActions() {
@@ -1018,7 +1037,7 @@ Item {
       var out = Actions.transform(id, text)
       if (out === null) return
       root.startEdit()
-      editor.text = out // borrador: Ctrl+Enter lo guarda, Esc lo descarta
+      if (editor) editor.text = out // borrador: Ctrl+Enter lo guarda, Esc lo descarta
       return
     }
     switch (id) {
@@ -1063,9 +1082,10 @@ Item {
     root.chipMode = false
     root.editMode = "note"
     root.editingId = r.row.entry.id
-    editor.text = String(r.row.entry.note || "")
     root.editing = true
+    editor.text = String(r.row.entry.note || "")
     Qt.callLater(function() {
+      if (!editor) return
       editor.forceActiveFocus()
       editor.cursorPosition = editor.length
     })
@@ -1077,9 +1097,10 @@ Item {
     root.chipMode = false
     root.editMode = "text"
     root.editingId = r.row.entry.id
-    editor.text = String(r.row.entry.text || "")
     root.editing = true
+    editor.text = String(r.row.entry.text || "")
     Qt.callLater(function() {
+      if (!editor) return
       editor.forceActiveFocus()
       editor.cursorPosition = editor.length
     })
@@ -1432,7 +1453,7 @@ Item {
       borderSpec: root.borderSpec
       padding: Style.space(8)
 
-      MouseArea { anchors.fill: parent; onClicked: quickInput.forceActiveFocus() }
+      MouseArea { anchors.fill: parent; onClicked: if (quickInput) quickInput.forceActiveFocus() }
 
       Item {
         id: quickHeader
@@ -1452,46 +1473,49 @@ Item {
           font.pixelSize: Style.font.title
         }
 
-        TextInput {
-          id: quickInput
+        Loader {
+          id: quickInputLoader
+          active: root.quickOpen
           anchors.left: quickIcon.right
           anchors.leftMargin: Style.space(10)
           anchors.right: parent.right
           anchors.verticalCenter: parent.verticalCenter
-          color: root.foreground
-          font.family: root.fontFamily
-          font.pixelSize: Style.font.title
-          onTextChanged: {
-            root.quickQuery = text
-            root.quickIndex = 0
-          }
-
-          Keys.onPressed: function(event) {
-            var n = root.quickResults.length
-            if (event.key === Qt.Key_Escape) {
-              root.closeQuick()
-              event.accepted = true
-            } else if (event.key === Qt.Key_Up && n > 0) {
-              root.quickIndex = (root.quickIndex - 1 + n) % n
-              quickList.positionViewAtIndex(root.quickIndex, ListView.Contain)
-              event.accepted = true
-            } else if (event.key === Qt.Key_Down && n > 0) {
-              root.quickIndex = (root.quickIndex + 1) % n
-              quickList.positionViewAtIndex(root.quickIndex, ListView.Contain)
-              event.accepted = true
-            } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-              root.pasteSnippet(root.quickResults[root.quickIndex], (event.modifiers & Qt.ShiftModifier) !== 0)
-              event.accepted = true
+          sourceComponent: TextInput {
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.title
+            onTextChanged: {
+              root.quickQuery = text
+              root.quickIndex = 0
             }
-          }
 
-          Text {
-            anchors.verticalCenter: parent.verticalCenter
-            visible: quickInput.text.length === 0
-            text: root.t("quick.placeholder")
-            color: root.mutedFg
-            opacity: 0.6
-            font: quickInput.font
+            Keys.onPressed: function(event) {
+              var n = root.quickResults.length
+              if (event.key === Qt.Key_Escape) {
+                root.closeQuick()
+                event.accepted = true
+              } else if (event.key === Qt.Key_Up && n > 0) {
+                root.quickIndex = (root.quickIndex - 1 + n) % n
+                quickList.positionViewAtIndex(root.quickIndex, ListView.Contain)
+                event.accepted = true
+              } else if (event.key === Qt.Key_Down && n > 0) {
+                root.quickIndex = (root.quickIndex + 1) % n
+                quickList.positionViewAtIndex(root.quickIndex, ListView.Contain)
+                event.accepted = true
+              } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                root.pasteSnippet(root.quickResults[root.quickIndex], (event.modifiers & Qt.ShiftModifier) !== 0)
+                event.accepted = true
+              }
+            }
+
+            Text {
+              anchors.verticalCenter: parent.verticalCenter
+              visible: parent.text.length === 0
+              text: root.t("quick.placeholder")
+              color: root.mutedFg
+              opacity: 0.6
+              font: parent.font
+            }
           }
         }
       }
@@ -1959,7 +1983,7 @@ Item {
           border.width: 1
           border.color: Util.alpha(root.accent, 0.5)
 
-          MouseArea { anchors.fill: parent; onClicked: actionsFilter.forceActiveFocus() }
+          MouseArea { anchors.fill: parent; onClicked: if (actionsFilter) actionsFilter.forceActiveFocus() }
 
           Item {
             id: actionsHeader
@@ -1980,46 +2004,49 @@ Item {
               font.bold: true
             }
 
-            TextInput {
-              id: actionsFilter
+            Loader {
+              id: actionsFilterLoader
+              active: root.actionsOpen
               anchors.left: actionsTitle.right
               anchors.leftMargin: Style.space(12)
               anchors.right: parent.right
               anchors.rightMargin: Style.space(12)
               anchors.verticalCenter: parent.verticalCenter
-              color: root.foreground
-              font.family: root.fontFamily
-              font.pixelSize: Style.font.body
-              onTextChanged: {
-                root.actionsQuery = text
-                root.actionCursor = 0
-              }
-
-              Keys.onPressed: function(event) {
-                var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
-                if (event.key === Qt.Key_Escape || (ctrl && event.key === Qt.Key_Period)) {
-                  root.closeActions()
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Up || (ctrl && event.key === Qt.Key_P)) {
-                  root.moveActionCursor(-1)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Down || (ctrl && event.key === Qt.Key_N)) {
-                  root.moveActionCursor(1)
-                  event.accepted = true
-                } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                  var a = root.visibleActions[root.actionCursor]
-                  if (a) root.runAction(a.id)
-                  event.accepted = true
+              sourceComponent: TextInput {
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                onTextChanged: {
+                  root.actionsQuery = text
+                  root.actionCursor = 0
                 }
-              }
 
-              Text {
-                anchors.verticalCenter: parent.verticalCenter
-                visible: actionsFilter.text.length === 0
-                text: root.t("actions.filter")
-                color: root.mutedFg
-                opacity: 0.6
-                font: actionsFilter.font
+                Keys.onPressed: function(event) {
+                  var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+                  if (event.key === Qt.Key_Escape || (ctrl && event.key === Qt.Key_Period)) {
+                    root.closeActions()
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Up || (ctrl && event.key === Qt.Key_P)) {
+                    root.moveActionCursor(-1)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Down || (ctrl && event.key === Qt.Key_N)) {
+                    root.moveActionCursor(1)
+                    event.accepted = true
+                  } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                    var a = root.visibleActions[root.actionCursor]
+                    if (a) root.runAction(a.id)
+                    event.accepted = true
+                  }
+                }
+
+                Text {
+                  anchors.verticalCenter: parent.verticalCenter
+                  visible: parent.text.length === 0
+                  text: root.t("actions.filter")
+                  color: root.mutedFg
+                  opacity: 0.6
+                  font: parent.font
+                }
               }
             }
 
@@ -2119,7 +2146,7 @@ Item {
           border.width: 1
           border.color: Util.alpha(root.pausedColor, 0.6)
 
-          MouseArea { anchors.fill: parent; onClicked: clearInput.forceActiveFocus() }
+          MouseArea { anchors.fill: parent; onClicked: if (clearInput) clearInput.forceActiveFocus() }
 
           Column {
             id: promptColumn
@@ -2153,24 +2180,27 @@ Item {
               border.width: 1
               border.color: root.clearWordTyped() ? root.pausedColor : root.lineColor
 
-              TextInput {
-                id: clearInput
+              Loader {
+                id: clearInputLoader
+                active: root.clearPromptOpen
                 anchors.fill: parent
                 anchors.leftMargin: Style.space(10)
                 anchors.rightMargin: Style.space(10)
-                verticalAlignment: TextInput.AlignVCenter
-                color: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                selectByMouse: true
+                sourceComponent: TextInput {
+                  verticalAlignment: TextInput.AlignVCenter
+                  color: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  selectByMouse: true
 
-                Keys.onPressed: function(event) {
-                  if (event.key === Qt.Key_Escape) {
-                    root.cancelClearHistory()
-                    event.accepted = true
-                  } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
-                    if (root.clearWordTyped()) root.confirmClearHistory()
-                    event.accepted = true
+                  Keys.onPressed: function(event) {
+                    if (event.key === Qt.Key_Escape) {
+                      root.cancelClearHistory()
+                      event.accepted = true
+                    } else if (event.key === Qt.Key_Return || event.key === Qt.Key_Enter) {
+                      if (root.clearWordTyped()) root.confirmClearHistory()
+                      event.accepted = true
+                    }
                   }
                 }
               }
@@ -2179,7 +2209,7 @@ Item {
                 anchors.left: parent.left
                 anchors.leftMargin: Style.space(10)
                 anchors.verticalCenter: parent.verticalCenter
-                visible: clearInput.text.length === 0
+                visible: !clearInput || clearInput.text.length === 0
                 text: root.clearWord
                 color: root.mutedFg
                 opacity: 0.5
@@ -3151,20 +3181,25 @@ Item {
             }
           }
 
-          PreviewPane {
+          // Sus TextEdit son de solo lectura (no consultan el portapapeles), pero
+          // igual solo existe con la ventana visible: nada de texto vivo oculto.
+          Loader {
+            active: root.surfaceVisible
             anchors.top: noteBox.visible ? noteBox.bottom : parent.top
             anchors.topMargin: noteBox.visible ? Style.space(8) : 0
             anchors.bottom: parent.bottom
             anchors.right: parent.right
             anchors.left: parent.left
             anchors.leftMargin: root.listWidth + Style.space(14)
-            result: root.currentResult
-            openAction: function() { root.openResult(root.currentResult) }
-            copyTextAction: function(text) { root.copyText(text) }
-            pluginDir: root.pluginDir
-            tr: root.t
-            strings: root.strings
             visible: root.currentResult !== null && !root.editing && !root.hidePreview
+            sourceComponent: PreviewPane {
+              result: root.currentResult
+              openAction: function() { root.openResult(root.currentResult) }
+              copyTextAction: function(text) { root.copyText(text) }
+              pluginDir: root.pluginDir
+              tr: root.t
+              strings: root.strings
+            }
           }
 
           // Editor en el sitio del preview (F2 / Ctrl+E).
@@ -3212,7 +3247,7 @@ Item {
               anchors.margins: Style.space(12)
               clip: true
               contentWidth: width
-              contentHeight: editor.contentHeight
+              contentHeight: editor ? editor.contentHeight : 0
               boundsBehavior: Flickable.StopAtBounds
 
               function ensureVisible(r) {
@@ -3220,27 +3255,30 @@ Item {
                 else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
               }
 
-              TextEdit {
-                id: editor
-                width: editorFlick.width
-                wrapMode: TextEdit.Wrap
-                selectByMouse: true
-                persistentSelection: true
-                color: root.foreground
-                selectionColor: Util.alpha(root.accent, 0.35)
-                selectedTextColor: root.foreground
-                font.family: root.fontFamily
-                font.pixelSize: Style.font.body
-                onCursorRectangleChanged: editorFlick.ensureVisible(cursorRectangle)
+              Loader {
+                id: editorLoader
+                active: root.editing
+                sourceComponent: TextEdit {
+                  width: editorFlick.width
+                  wrapMode: TextEdit.Wrap
+                  selectByMouse: true
+                  persistentSelection: true
+                  color: root.foreground
+                  selectionColor: Util.alpha(root.accent, 0.35)
+                  selectedTextColor: root.foreground
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.body
+                  onCursorRectangleChanged: editorFlick.ensureVisible(cursorRectangle)
 
-                Keys.onPressed: function(event) {
-                  var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
-                  if (event.key === Qt.Key_Escape) {
-                    root.cancelEdit()
-                    event.accepted = true
-                  } else if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
-                    root.saveEdit()
-                    event.accepted = true
+                  Keys.onPressed: function(event) {
+                    var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+                    if (event.key === Qt.Key_Escape) {
+                      root.cancelEdit()
+                      event.accepted = true
+                    } else if (ctrl && (event.key === Qt.Key_Return || event.key === Qt.Key_Enter || event.key === Qt.Key_S)) {
+                      root.saveEdit()
+                      event.accepted = true
+                    }
                   }
                 }
               }
@@ -3660,20 +3698,23 @@ Item {
                   radius: Style.space(4)
                   color: root.chipBg
                   border.width: 1
-                  border.color: snipNameInput.activeFocus ? Util.alpha(root.accent, 0.6) : root.lineColor
+                  border.color: snipNameInput && snipNameInput.activeFocus ? Util.alpha(root.accent, 0.6) : root.lineColor
 
-                  TextInput {
-                    id: snipNameInput
+                  Loader {
+                    id: snipNameInputLoader
+                    active: root.snipEditing
                     anchors.fill: parent
                     anchors.leftMargin: Style.space(10)
                     anchors.rightMargin: Style.space(10)
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    selectByMouse: true
-                    KeyNavigation.tab: snipSlugInput
-                    Keys.onPressed: function(event) { snipEditor.commonKeys(event) }
+                    sourceComponent: TextInput {
+                      verticalAlignment: TextInput.AlignVCenter
+                      color: root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      selectByMouse: true
+                      KeyNavigation.tab: snipSlugInput
+                      Keys.onPressed: function(event) { snipEditor.commonKeys(event) }
+                    }
                   }
                 }
 
@@ -3693,27 +3734,30 @@ Item {
                   color: root.chipBg
                   border.width: 1
                   border.color: snipSlugTaken.visible ? root.pausedColor
-                              : snipSlugInput.activeFocus ? Util.alpha(root.accent, 0.6) : root.lineColor
+                              : snipSlugInput && snipSlugInput.activeFocus ? Util.alpha(root.accent, 0.6) : root.lineColor
 
-                  TextInput {
-                    id: snipSlugInput
+                  Loader {
+                    id: snipSlugInputLoader
+                    active: root.snipEditing
                     anchors.fill: parent
                     anchors.leftMargin: Style.space(10)
                     anchors.rightMargin: Style.space(10)
-                    verticalAlignment: TextInput.AlignVCenter
-                    color: root.accent
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    selectByMouse: true
-                    KeyNavigation.tab: snipBodyEdit
-                    KeyNavigation.backtab: snipNameInput
-                    Keys.onPressed: function(event) { snipEditor.commonKeys(event) }
+                    sourceComponent: TextInput {
+                      verticalAlignment: TextInput.AlignVCenter
+                      color: root.accent
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      selectByMouse: true
+                      KeyNavigation.tab: snipBodyEdit
+                      KeyNavigation.backtab: snipNameInput
+                      Keys.onPressed: function(event) { snipEditor.commonKeys(event) }
+                    }
                   }
                 }
 
                 Text {
                   id: snipSlugTaken
-                  visible: root.snipEditing && Snippets.slugTaken(root.snippets, snipSlugInput.text, root.snipEditId)
+                  visible: root.snipEditing && !!snipSlugInput && Snippets.slugTaken(root.snippets, snipSlugInput.text, root.snipEditId)
                   text: "⚠ " + root.t("snip.slugTaken")
                   color: root.pausedColor
                   font.family: root.fontFamily
@@ -3794,7 +3838,7 @@ Item {
                 radius: Style.space(4)
                 color: root.chipBg
                 border.width: 1
-                border.color: snipBodyEdit.activeFocus ? Util.alpha(root.accent, 0.6) : root.lineColor
+                border.color: snipBodyEdit && snipBodyEdit.activeFocus ? Util.alpha(root.accent, 0.6) : root.lineColor
 
                 Flickable {
                   id: snipBodyFlick
@@ -3802,7 +3846,7 @@ Item {
                   anchors.margins: Style.space(10)
                   clip: true
                   contentWidth: width
-                  contentHeight: snipBodyEdit.contentHeight
+                  contentHeight: snipBodyEdit ? snipBodyEdit.contentHeight : 0
                   boundsBehavior: Flickable.StopAtBounds
 
                   function ensureVisible(r) {
@@ -3810,25 +3854,28 @@ Item {
                     else if (contentY + height <= r.y + r.height) contentY = r.y + r.height - height
                   }
 
-                  TextEdit {
-                    id: snipBodyEdit
-                    width: snipBodyFlick.width
-                    wrapMode: TextEdit.Wrap
-                    selectByMouse: true
-                    persistentSelection: true
-                    color: root.foreground
-                    selectionColor: Util.alpha(root.accent, 0.35)
-                    selectedTextColor: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    onCursorRectangleChanged: snipBodyFlick.ensureVisible(cursorRectangle)
-                    KeyNavigation.backtab: snipSlugInput
+                  Loader {
+                    id: snipBodyEditLoader
+                    active: root.snipEditing
+                    sourceComponent: TextEdit {
+                      width: snipBodyFlick.width
+                      wrapMode: TextEdit.Wrap
+                      selectByMouse: true
+                      persistentSelection: true
+                      color: root.foreground
+                      selectionColor: Util.alpha(root.accent, 0.35)
+                      selectedTextColor: root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      onCursorRectangleChanged: snipBodyFlick.ensureVisible(cursorRectangle)
+                      KeyNavigation.backtab: snipSlugInput
 
-                    Keys.onPressed: function(event) {
-                      var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
-                      if (ctrl && event.key === Qt.Key_B) { root.wrapSelection("**", "**"); event.accepted = true }
-                      else if (ctrl && event.key === Qt.Key_I) { root.wrapSelection("_", "_"); event.accepted = true }
-                      else snipEditor.commonKeys(event)
+                      Keys.onPressed: function(event) {
+                        var ctrl = (event.modifiers & Qt.ControlModifier) !== 0
+                        if (ctrl && event.key === Qt.Key_B) { root.wrapSelection("**", "**"); event.accepted = true }
+                        else if (ctrl && event.key === Qt.Key_I) { root.wrapSelection("_", "_"); event.accepted = true }
+                        else snipEditor.commonKeys(event)
+                      }
                     }
                   }
                 }

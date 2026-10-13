@@ -2,6 +2,11 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.2 - 2026-10-13 00:15
+---
+- [fix] Editable fields (quick snippets search, actions filter, clear-history prompt, clip and snippet editors) only exist while their panel is open: a hidden but live text field re-read foreign clipboard text on every change, with no size or time limit
+- [update] The preview pane is only created while the window is visible
+
 ## 0.2.1 - 2026-10-12 07:13
 ---
 - [fix] Old pins no longer vanish from the list once the history grows past the row cap (`maxRows`); they were kept in the history but cut from the view
