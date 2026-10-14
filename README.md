@@ -24,7 +24,8 @@ from any app.
   `Ctrl+1…9` pastes pin N. Pins never expire, never count against the limits and
   survive clearing the history.
 - **Rich previews.** Images, QR codes with their decoded content, OCR text of
-  screenshots, color swatches, pretty-printed JSON, links and file lists.
+  screenshots, color swatches, pretty-printed JSON, links and file lists. Copied PNGs
+  are stored without their metadata (text, color profile, Exif); the pixels are untouched.
 - **Edit, annotate, transform.** `F2` / `Ctrl+E` edits a text clip in place,
   `Ctrl+M` attaches a searchable note, and `Ctrl+.` opens an actions menu that
   depends on the clip type (trim, change case, sort lines, format JSON, copy a color

@@ -16,6 +16,9 @@ The clipboard owner is untrusted: every payload is read through a bounded
 reader (byte cap + deadline) and QR/OCR only run on images whose header
 dimensions are under a pixel cap, so a hostile or runaway source cannot make
 the plugin buffer an unbounded payload or decode a decompression bomb.
+PNGs are stored stripped of every metadata chunk (text, ICC profile, Exif) so
+the shell's image decoder never inflates foreign metadata; `capture.py
+sanitize-images` applies the same filter to images already stored.
 """
 
 import hashlib
@@ -29,6 +32,7 @@ import sys
 import tempfile
 import time
 import urllib.parse
+import zlib
 
 STATE_DIR = os.path.join(
     os.environ.get("XDG_STATE_HOME", os.path.expanduser("~/.local/state")),
@@ -179,6 +183,100 @@ def image_size(data, mime):
     return None
 
 
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+# Fragmentos que el PNG guardado conserva: los de la imagen y los pequeños sin
+# comprimir. Fuera quedan los de texto (tEXt/zTXt/iTXt), el perfil de color
+# (iCCP), eXIf y cualquier otro: libpng descomprime y retiene los de texto y el
+# perfil antes de que Qt aplique sus límites de imagen, así que un PNG de pocos
+# MB podía hacer reservar gigas de metadatos en el shell (reparo del marketplace
+# al 0.2.3, issue #11191).
+PNG_KEEP_CHUNKS = {b"IHDR", b"PLTE", b"IDAT", b"IEND", b"tRNS", b"gAMA",
+                   b"cHRM", b"sRGB", b"sBIT", b"bKGD", b"pHYs"}
+
+
+def sanitize_png(data):
+    """The PNG rebuilt with only PNG_KEEP_CHUNKS, or None when the bytes are
+    not a well-formed PNG (bad signature, truncated chunk, bad CRC, IHDR not
+    first, no IDAT or no IEND). Pixels are untouched: IDAT is copied as is."""
+    if data[:8] != PNG_SIGNATURE:
+        return None
+    out = [PNG_SIGNATURE]
+    pos = 8
+    n = len(data)
+    seen_idat = False
+    first = True
+    while pos + 12 <= n:
+        length = struct.unpack(">I", data[pos:pos + 4])[0]
+        ctype = data[pos + 4:pos + 8]
+        end = pos + 12 + length
+        if length > 0x7FFFFFFF or end > n:
+            return None
+        if zlib.crc32(data[pos + 4:pos + 8 + length]) != struct.unpack(">I", data[end - 4:end])[0]:
+            return None
+        if first and (ctype != b"IHDR" or length != 13):
+            return None
+        first = False
+        if ctype == b"IDAT":
+            seen_idat = True
+        if ctype in PNG_KEEP_CHUNKS:
+            out.append(data[pos:end])
+        pos = end
+        if ctype == b"IEND":
+            # Lo que venga tras IEND se descarta.
+            return b"".join(out) if seen_idat else None
+    return None
+
+
+def sanitize_image_dir(directory=IMAGE_DIR):
+    """Pass every stored image that is PNG by content (whatever its extension:
+    Qt detects the format by its bytes) through sanitize_png, rewriting the ones
+    that change and deleting the ones that are not a well-formed PNG. Covers
+    images saved before 0.2.4. Returns (rewritten, removed)."""
+    rewritten = removed = 0
+    try:
+        names = os.listdir(directory)
+    except OSError:
+        return rewritten, removed
+    for name in names:
+        path = os.path.join(directory, name)
+        try:
+            if not os.path.isfile(path) or os.path.islink(path):
+                continue
+            with open(path, "rb") as f:
+                if f.read(8) != PNG_SIGNATURE:
+                    continue
+                data = PNG_SIGNATURE + f.read()
+        except OSError:
+            continue
+        clean = sanitize_png(data)
+        if clean == data:
+            continue
+        try:
+            if clean is None:
+                os.unlink(path)
+                removed += 1
+            else:
+                write_atomic(path, clean)
+                rewritten += 1
+        except OSError:
+            pass
+    return rewritten, removed
+
+
+def write_atomic(path, data):
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+
+
 def list_types():
     out = run(["wl-paste", "--list-types"])
     if not out:
@@ -228,6 +326,13 @@ def capture_image(types, app):
         # Oversized, slow, or empty: skip the clip entirely (an image mime was
         # offered, so we do not fall through to a text capture of it either).
         return True
+    # Un PNG (por contenido: Qt reconoce el formato por los bytes, no por el
+    # mime anunciado) se guarda sin sus metadatos; uno mal formado no se guarda.
+    if data[:8] == PNG_SIGNATURE or mime == "image/png":
+        data = sanitize_png(data)
+        if not data:
+            return True
+        mime = "image/png"
     os.makedirs(IMAGE_DIR, exist_ok=True)
     digest = hashlib.sha256(data).hexdigest()
     path = os.path.join(IMAGE_DIR, f"{digest}.{IMAGE_EXT[mime]}")
@@ -241,16 +346,9 @@ def capture_image(types, app):
     parse_ok = bool(size) and size[0] * size[1] <= MAX_PARSE_PIXELS
 
     if not os.path.exists(path):
-        fd, tmp = tempfile.mkstemp(dir=IMAGE_DIR)
         try:
-            with os.fdopen(fd, "wb") as f:
-                f.write(data)
-            os.replace(tmp, path)
+            write_atomic(path, data)
         except Exception:
-            try:
-                os.unlink(tmp)
-            except OSError:
-                pass
             return
 
     qr = decode_qr(path) if parse_ok and os.environ.get("CLIPBOARD_QR", "1") != "0" else None
@@ -369,6 +467,11 @@ def drain_stdin(timeout=READ_TIMEOUT):
 
 
 def main():
+    # `capture.py sanitize-images`: pasada al arrancar el shell sobre las
+    # imágenes ya guardadas (ver sanitize_image_dir).
+    if sys.argv[1:] == ["sanitize-images"]:
+        sanitize_image_dir()
+        return
     if not drain_stdin():
         return
     types = list_types()

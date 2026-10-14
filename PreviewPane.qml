@@ -18,6 +18,8 @@ Item {
   // Wired by the picker: copies a string (OCR text, QR payload) to the clipboard.
   property var copyTextAction: function(text) {}
   property string pluginDir: ""
+  // false hasta que capture.py filtra las imágenes guardadas (ver Clipboard.qml).
+  property bool imagesReady: false
   // Idioma: t() y el diccionario de lang/<idioma>.js los pasa Clipboard.qml.
   property var tr: function(key, args) { return key }
   property var strings: null
@@ -641,7 +643,7 @@ Item {
         anchors.centerIn: parent
         width: parent.width
         height: parent.height
-        source: root.entry && root.entry.path ? Util.fileUrl(root.entry.path) : ""
+        source: root.imagesReady && root.entry && root.entry.path ? Util.fileUrl(root.entry.path) : ""
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         smooth: true

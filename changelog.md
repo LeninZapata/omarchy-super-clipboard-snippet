@@ -2,6 +2,11 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.4 - 2026-10-13 23:14
+---
+- [fix] Copied PNG images are stored without their metadata chunks (text, ICC profile, Exif): the shell's image decoder inflated compressed text before any size limit, so a small PNG could make it allocate gigabytes. Pixels are untouched; malformed PNGs are not stored
+- [fix] Images saved by earlier versions get the same cleanup when the shell starts, and no thumbnail or preview loads until it finishes
+
 ## 0.2.3 - 2026-10-13 07:48
 ---
 - [fix] No native Qt text input anywhere: every field (quick snippets search, actions filter, clear-history prompt, clip/note editor, snippet name, slug and body) is the plugin's own PlainEdit, so no field reads foreign clipboard text, open or hidden

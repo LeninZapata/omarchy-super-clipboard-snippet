@@ -1199,6 +1199,11 @@ Item {
 
   ListModel { id: displayModel }
 
+  // Las imágenes guardadas antes de 0.2.4 pueden traer metadatos PNG sin filtrar
+  // (ver sanitize_png en capture.py): ninguna miniatura ni preview se carga hasta
+  // que la pasada `capture.py sanitize-images` termina.
+  property bool imagesReady: false
+
   PointerMoveGate { id: pointerGate; referenceItem: card }
 
   // Settings propios (no shell.json): los escribe la página de Settings del
@@ -1385,9 +1390,16 @@ Item {
     command: ["sh", "-c", 'mkdir -p "$1" "$3"; pkill -f "wl-paste --watch python3 $2/capture[.]py" || true',
               "init", root.stateDir, root.pluginDir, root.configDir]
     onExited: {
+      sanitizeProc.running = true
       snapshotProc.running = true
       watchProc.running = true
     }
+  }
+
+  Process {
+    id: sanitizeProc
+    command: ["python3", root.pluginDir + "/capture.py", "sanitize-images"]
+    onExited: root.imagesReady = true
   }
 
   Process {
@@ -2916,7 +2928,7 @@ Item {
                   Image {
                     anchors.fill: parent
                     visible: row.derived === "image"
-                    source: row.entry && row.entry.path ? Util.fileUrl(row.entry.path) : ""
+                    source: root.imagesReady && row.entry && row.entry.path ? Util.fileUrl(row.entry.path) : ""
                     fillMode: Image.PreserveAspectCrop
                     asynchronous: true
                     smooth: true
@@ -3191,6 +3203,7 @@ Item {
               openAction: function() { root.openResult(root.currentResult) }
               copyTextAction: function(text) { root.copyText(text) }
               pluginDir: root.pluginDir
+              imagesReady: root.imagesReady
               tr: root.t
               strings: root.strings
             }
