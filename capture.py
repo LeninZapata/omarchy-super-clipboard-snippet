@@ -467,6 +467,9 @@ def drain_stdin(timeout=READ_TIMEOUT):
 
 
 def main():
+    # Imágenes y carpetas privadas (600/700): el historial es texto e imágenes
+    # copiados, que otras cuentas del equipo no deben poder leer.
+    os.umask(0o077)
     # `capture.py sanitize-images`: pasada al arrancar el shell sobre las
     # imágenes ya guardadas (ver sanitize_image_dir).
     if sys.argv[1:] == ["sanitize-images"]:

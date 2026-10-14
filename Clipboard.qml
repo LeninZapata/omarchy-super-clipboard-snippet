@@ -621,9 +621,9 @@ Item {
       var data = { app: "super-clipboard-snippet", kind: kind, version: 1, exportedAt: Math.floor(Date.now() / 1000) }
       if (kind === "snippets") data.snippets = root.snippets
       else data.settings = root.settings
-      exportFile.path = target
-      exportFile.setText(JSON.stringify(data, null, 1) + "\n")
-      root.notify(root.t("backup.exported", { path: target }))
+      root.pendingExport = { path: target, text: JSON.stringify(data, null, 1) + "\n" }
+      exportPrepProc.command = ["sh", "-c", 'umask 077; [ -e "$1" ] || : > "$1"; chmod 600 "$1"', "export", target]
+      exportPrepProc.running = true
     } else {
       root.pendingImportKind = key === "importSnippets" ? "snippets" : "settings"
       importFile.path = ""
@@ -1210,12 +1210,12 @@ Item {
   // panel y se recargan solos si alguien edita el archivo a mano.
   FileView {
     id: settingsFile
-    path: root.configDir + "/settings.json"
+    path: root.storageReady ? root.configDir + "/settings.json" : ""
     watchChanges: true
     atomicWrites: true
     printErrors: false
     onLoaded: root.applySettings(text())
-    onLoadFailed: root.applySettings("{}")
+    onLoadFailed: if (root.storageReady) root.applySettings("{}")
     onFileChanged: reload()
   }
 
@@ -1301,35 +1301,35 @@ Item {
   // Pause state survives shell restarts.
   FileView {
     id: pausedFile
-    path: root.stateDir + "/paused.json"
+    path: root.storageReady ? root.stateDir + "/paused.json" : ""
     watchChanges: true
     atomicWrites: true
     printErrors: false
     onLoaded: {
       try { root.paused = !!JSON.parse(text()).paused } catch (e) { root.paused = false }
     }
-    onLoadFailed: root.paused = false
+    onLoadFailed: if (root.storageReady) root.paused = false
   }
 
   FileView {
     id: snippetsFile
-    path: root.stateDir + "/snippets.json"
+    path: root.storageReady ? root.stateDir + "/snippets.json" : ""
     watchChanges: true
     atomicWrites: true
     printErrors: false
     onLoaded: root.snippets = Snippets.parseList(text(), Math.floor(Date.now() / 1000))
-    onLoadFailed: root.snippets = []
+    onLoadFailed: if (root.storageReady) root.snippets = []
     onFileChanged: reload()
   }
 
   FileView {
     id: historyFile
-    path: root.statePath
+    path: root.storageReady ? root.statePath : ""
     watchChanges: true
     atomicWrites: true
     printErrors: false
     onLoaded: root.loadHistory(text())
-    onLoadFailed: root.loadHistory("[]")
+    onLoadFailed: if (root.storageReady) root.loadHistory("[]")
     onFileChanged: reload()
   }
 
@@ -1338,6 +1338,22 @@ Item {
     stdout: StdioCollector {
       waitForEnd: true
       onStreamFinished: root.backupPicked(text)
+    }
+  }
+
+  // La copia de snippets/settings también nace en 600: se crea vacía antes de
+  // que FileView la escriba (QSaveFile conserva los permisos del existente).
+  property var pendingExport: null
+
+  Process {
+    id: exportPrepProc
+    onExited: {
+      var job = root.pendingExport
+      root.pendingExport = null
+      if (!job) return
+      exportFile.path = job.path
+      exportFile.setText(job.text)
+      root.notify(root.t("backup.exported", { path: job.path }))
     }
   }
 
@@ -1383,13 +1399,29 @@ Item {
     onExited: runNextGc()
   }
 
-  // Reap watchers left behind by a previous shell instance, then start our
-  // own. pdeathsig kills them whenever the shell exits.
+  // Permisos y arranque. El historial y los snippets guardan texto copiado:
+  // las carpetas del plugin quedan en 700 y sus archivos en 600, también los
+  // que ya existían (reparo del marketplace al 0.2.4, issue #11191). Los .json
+  // que falten se crean vacíos en 600 porque QSaveFile (el escritor de
+  // FileView) crea los nuevos con 0666 & ~umask y conserva los permisos de los
+  // existentes; por eso ningún FileView tiene ruta hasta que esto termina
+  // (storageReady). Después se reapean los capturadores que dejó un shell
+  // anterior y se arrancan los propios (pdeathsig los mata con el shell).
+  property bool storageReady: false
+
   Process {
     id: initProc
-    command: ["sh", "-c", 'mkdir -p "$1" "$3"; pkill -f "wl-paste --watch python3 $2/capture[.]py" || true',
+    command: ["sh", "-c", 'umask 077\n'
+              + 'mkdir -p "$1/images" "$3"\n'
+              + 'chmod 700 "$1" "$1/images" "$3"\n'
+              + 'for f in "$1/history.json" "$1/snippets.json" "$1/paused.json" "$3/settings.json"; do\n'
+              + '  [ -e "$f" ] || [ -L "$f" ] || : > "$f"\n'
+              + 'done\n'
+              + 'find "$1" "$1/images" "$3" -maxdepth 1 -type f ! -perm 600 -exec chmod 600 {} +\n'
+              + 'pkill -f "wl-paste --watch python3 $2/capture[.]py" || true',
               "init", root.stateDir, root.pluginDir, root.configDir]
     onExited: {
+      root.storageReady = true
       sanitizeProc.running = true
       snapshotProc.running = true
       watchProc.running = true

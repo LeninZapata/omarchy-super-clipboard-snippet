@@ -274,6 +274,9 @@ Everything lives in the plugin's own folders; it never reads or rewrites the dat
 | `~/.local/state/omarchy/super-clipboard-snippet/snippets.json` | snippets |
 | `~/.config/omarchy/super-clipboard-snippet/settings.json` | settings |
 
+These folders are owner-only (`700`, files `600`): the plugin enforces it at every shell
+start, so other accounts on the machine cannot read your history or snippets.
+
 Copies marked as sensitive by password managers (`x-kde-passwordManagerHint`) are never
 recorded.
 

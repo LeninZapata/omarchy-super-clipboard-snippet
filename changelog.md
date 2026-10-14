@@ -2,6 +2,11 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.5 - 2026-10-14 08:50
+---
+- [fix] History, snippets, pause state and settings are owner-only: the plugin's folders are set to 700 and their files to 600 at shell start, existing ones included, and missing files are created private before anything is written
+- [fix] Captured images, the OCR backfill and snippet/settings exports are written owner-only too
+
 ## 0.2.4 - 2026-10-13 23:14
 ---
 - [fix] Copied PNG images are stored without their metadata chunks (text, ICC profile, Exif): the shell's image decoder inflated compressed text before any size limit, so a small PNG could make it allocate gigabytes. Pixels are untouched; malformed PNGs are not stored

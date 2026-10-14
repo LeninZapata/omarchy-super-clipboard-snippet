@@ -74,9 +74,11 @@ def main():
 
     if changed:
         tmp = STATE + ".tmp"
-        with open(tmp, "w") as f:
+        # El historial guarda texto copiado: solo lo lee su dueño (600).
+        with open(os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600), "w") as f:
             json.dump(history, f, indent=1)
             f.write("\n")
+        os.chmod(tmp, 0o600)
         os.replace(tmp, STATE)
     print(f"OCR'd {changed} image(s); {sum(1 for e in history if e.get('ocr'))} total with OCR text")
 

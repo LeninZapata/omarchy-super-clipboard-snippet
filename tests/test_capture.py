@@ -147,3 +147,24 @@ class SanitizePngTests(unittest.TestCase):
             self.assertTrue(out[0]["path"].endswith(".png"))
             self.assertEqual(open(out[0]["path"], "rb").read(), png())
             self.assertEqual(out[0]["bytes"], len(png()))
+
+
+class PrivateFilesTests(unittest.TestCase):
+    def test_capture_runs_with_owner_only_umask(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = subprocess.run(
+                [sys.executable, "-c", "import capture, os, sys; sys.argv = ['capture.py', 'sanitize-images'];"
+                 " capture.main(); print(oct(os.umask(0)))"],
+                cwd=os.path.join(os.path.dirname(__file__), ".."), capture_output=True, text=True,
+                env=dict(os.environ, XDG_STATE_HOME=d))
+            self.assertEqual(out.stdout.strip(), "0o77", out.stderr)
+
+    def test_stored_png_is_owner_only(self):
+        with tempfile.TemporaryDirectory() as d:
+            path = os.path.join(d, "a.png")
+            old = os.umask(0o022)
+            try:
+                capture.write_atomic(path, png())
+            finally:
+                os.umask(old)
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
