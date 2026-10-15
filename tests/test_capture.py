@@ -3,6 +3,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+import unittest.mock
 
 
 class WatcherInputTests(unittest.TestCase):
@@ -171,3 +172,80 @@ class PrivateFilesTests(unittest.TestCase):
             finally:
                 os.umask(old)
             self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+
+
+def tiff(*pages):
+    """A little-endian TIFF with one image directory per (width, height); only
+    the header fields image_size/tiff_single_page read, no pixel data."""
+    out = bytearray(b"II*\x00" + struct.pack("<I", 8))
+    for i, (w, h) in enumerate(pages):
+        start = len(out)
+        nxt = start + 2 + 2 * 12 + 4 if i + 1 < len(pages) else 0
+        out += struct.pack("<H", 2)
+        out += struct.pack("<HHII", 256, 4, 1, w) + struct.pack("<HHII", 257, 4, 1, h)
+        out += struct.pack("<I", nxt)
+    return bytes(out)
+
+
+class MultiPageTiffTests(unittest.TestCase):
+    def test_single_and_multi_page_detection(self):
+        self.assertTrue(capture.tiff_single_page(tiff((10, 10))))
+        self.assertFalse(capture.tiff_single_page(tiff((10, 10), (20000, 20000))))
+        self.assertFalse(capture.tiff_single_page(tiff((10, 10))[:-2]))  # cortado
+
+    def test_can_parse_rejects_a_small_first_page_hiding_more(self):
+        self.assertTrue(capture.can_parse(tiff((100, 100)), "image/tiff"))
+        self.assertFalse(capture.can_parse(tiff((100, 100), (40000, 40000)), "image/tiff"))
+        self.assertFalse(capture.can_parse(tiff((100000, 1000)), "image/tiff"))  # sobre el tope de píxeles
+        self.assertTrue(capture.can_parse(png(), "image/png"))
+
+    def test_capture_skips_qr_and_ocr_for_multi_page_tiff(self):
+        calls = []
+        out = []
+        with tempfile.TemporaryDirectory() as d:
+            saved = (capture.IMAGE_DIR, capture.read_clipboard, capture.emit, capture.decode_qr, capture.decode_ocr)
+            capture.IMAGE_DIR = d
+            capture.read_clipboard = lambda mime, limit: tiff((10, 10), (30000, 30000))
+            capture.emit = out.append
+            capture.decode_qr = lambda path: calls.append("qr")
+            capture.decode_ocr = lambda path, lang: calls.append("ocr")
+            try:
+                self.assertTrue(capture.capture_image(["image/tiff"], "app"))
+            finally:
+                (capture.IMAGE_DIR, capture.read_clipboard, capture.emit,
+                 capture.decode_qr, capture.decode_ocr) = saved
+        self.assertEqual(calls, [])
+        self.assertEqual((out[0]["w"], out[0]["h"]), (10, 10))
+
+
+class DecoderMemoryTests(unittest.TestCase):
+    def test_limit_memory_caps_the_child(self):
+        grab = [sys.executable, "-c", "b = bytearray(512 * 1024 * 1024)"]
+        capped = subprocess.run(grab, capture_output=True, preexec_fn=capture.limit_memory(256 * 1024 * 1024))
+        self.assertNotEqual(capped.returncode, 0)
+        roomy = subprocess.run(grab, capture_output=True, preexec_fn=capture.limit_memory(capture.DECODER_MEMORY))
+        self.assertEqual(roomy.returncode, 0)
+
+    def test_ocr_and_qr_run_under_the_cap(self):
+        seen = []
+        real = subprocess.run
+
+        def fake(args, **kw):
+            seen.append((args[0], kw.get("preexec_fn")))
+            return real([sys.executable, "-c", "import resource; print(resource.getrlimit(resource.RLIMIT_AS)[0])"],
+                        **kw)
+        saved = os.environ.get("CLIPBOARD_OCR")
+        os.environ["CLIPBOARD_OCR"] = "1"
+        try:
+            with unittest.mock.patch.object(capture.subprocess, "run", side_effect=fake), \
+                 unittest.mock.patch.object(capture.shutil, "which", return_value="/usr/bin/tesseract"):
+                ocr = capture.decode_ocr("/nonexistent.png", "eng")
+                qr = capture.decode_qr("/nonexistent.png")
+        finally:
+            if saved is None:
+                os.environ.pop("CLIPBOARD_OCR", None)
+            else:
+                os.environ["CLIPBOARD_OCR"] = saved
+        self.assertEqual([s[0] for s in seen], ["tesseract", "zbarimg"])
+        self.assertEqual(ocr, str(capture.DECODER_MEMORY))
+        self.assertEqual(qr, str(capture.DECODER_MEMORY))

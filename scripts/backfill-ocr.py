@@ -25,7 +25,7 @@ def ocr(path, lang):
     try:
         r = subprocess.run(
             ["tesseract", path, "stdout", "-l", lang],
-            capture_output=True, timeout=30
+            capture_output=True, timeout=30, preexec_fn=capture.limit_memory(capture.DECODER_MEMORY)
         )
         if r.returncode != 0:
             return None
@@ -58,13 +58,13 @@ def main():
             continue
         if not os.path.exists(entry["path"]):
             continue
-        # Same guard as the capture daemon: never decode an image whose header
-        # dimensions are unknown or above the pixel cap.
+        # Same guard as the capture daemon (capture.can_parse): known dimensions
+        # under the pixel cap, and a TIFF only with a single page.
         with open(entry["path"], "rb") as f:
-            head = f.read(65536)
-        size = capture.image_size(head, entry.get("mime") or "image/png")
-        if not size or size[0] * size[1] > capture.MAX_PARSE_PIXELS:
-            print(f"  - {entry['id']}: skipped (size {size or 'unknown'})")
+            data = f.read(capture.MAX_IMAGE_BYTES + 1)
+        mime = entry.get("mime") or "image/png"
+        if len(data) > capture.MAX_IMAGE_BYTES or not capture.can_parse(data, mime):
+            print(f"  - {entry['id']}: skipped (size {capture.image_size(data, mime) or 'unknown'})")
             continue
         text = ocr(entry["path"], args.lang)
         if text:

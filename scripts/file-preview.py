@@ -11,15 +11,10 @@ import tempfile
 import time
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-from capture import MAX_IMAGE_BYTES, PNG_SIGNATURE, read_bounded, sanitize_png
+from capture import DECODER_MEMORY, MAX_IMAGE_BYTES, PNG_SIGNATURE, read_bounded, sanitize_png
 
-# Memoria total (espacio de direcciones) de cada decodificador del preview:
-# -max_alloc solo limita cada reserva por separado, y los metadatos que un
-# archivo trae (zTXt de un PNG, etiquetas de un vídeo…) se expanden en muchas.
-# Con el tope, el decodificador falla y solo falta la miniatura (reparo del
-# marketplace al 0.2.5, issue #11191). ffmpeg necesita ~700 MB solo para
-# arrancar sus hilos, de ahí 1 GiB.
-DECODER_MEMORY = 1024 * 1024 * 1024
+# Cada decodificador del preview corre con DECODER_MEMORY (ver capture.py): con
+# el tope falla y solo falta la miniatura.
 
 
 def clean_png_copy(path, directory):

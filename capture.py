@@ -64,7 +64,20 @@ MAX_TEXT_BYTES = _env_int("CLIPBOARD_MAX_TEXT_BYTES", 4 * 1024 * 1024)
 # pixels (the image is still recorded and previewed by Qt, which has its own
 # allocation limits).
 MAX_PARSE_PIXELS = _env_int("CLIPBOARD_MAX_PARSE_PIXELS", 40 * 1000 * 1000)
+# Memoria total (espacio de direcciones, RLIMIT_AS) de cada decodificador
+# externo: zbarimg y tesseract aquí, ffprobe/ffmpeg/pdftoppm en el preview de
+# archivos. Los límites de píxeles y -max_alloc acotan cada reserva, no su suma
+# (reparos del marketplace al 0.2.5 y 0.2.6, issue #11191). ffmpeg necesita
+# ~700 MB solo para arrancar sus hilos, de ahí 1 GiB.
+DECODER_MEMORY = 1024 * 1024 * 1024
 READ_TIMEOUT = 5.0
+
+
+def limit_memory(max_memory):
+    """preexec_fn that caps the child's address space at `max_memory` bytes."""
+    def apply():
+        resource.setrlimit(resource.RLIMIT_AS, (max_memory, max_memory))
+    return apply
 
 
 def run(args, timeout=5):
@@ -82,11 +95,9 @@ def read_bounded(args, limit, timeout=READ_TIMEOUT, max_memory=None):
     so memory use is bounded by `limit` regardless of what the source sends.
     `max_memory` (bytes) caps the child's whole address space (RLIMIT_AS): a
     decoder that tries to go past it fails instead of exhausting RAM."""
-    def limit_memory():
-        resource.setrlimit(resource.RLIMIT_AS, (max_memory, max_memory))
     try:
         proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-                                preexec_fn=limit_memory if max_memory else None)
+                                preexec_fn=limit_memory(max_memory) if max_memory else None)
     except Exception:
         return None
     chunks = []
@@ -187,6 +198,29 @@ def image_size(data, mime):
     except Exception:
         return None
     return None
+
+
+def tiff_single_page(data):
+    """True when a TIFF has exactly one image directory. tesseract and zbarimg
+    decode every page, and image_size only reads the first, so a small first
+    page could hide a huge compressed second one."""
+    try:
+        end = "<" if data[:2] == b"II" else ">"
+        off = struct.unpack(end + "I", data[4:8])[0]
+        count = struct.unpack(end + "H", data[off:off + 2])[0]
+        nxt = data[off + 2 + count * 12:off + 6 + count * 12]
+        return len(nxt) == 4 and struct.unpack(end + "I", nxt)[0] == 0
+    except Exception:
+        return False
+
+
+def can_parse(data, mime):
+    """Whether QR/OCR may decode this image: header dimensions known and under
+    MAX_PARSE_PIXELS, and a TIFF only when it has a single page."""
+    size = image_size(data, mime)
+    if not size or size[0] * size[1] > MAX_PARSE_PIXELS:
+        return False
+    return mime != "image/tiff" or tiff_single_page(data)
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
@@ -312,7 +346,7 @@ def decode_qr(path):
     try:
         r = subprocess.run(
             ["zbarimg", "-q", "--raw", "--", path],
-            capture_output=True, timeout=10
+            capture_output=True, timeout=10, preexec_fn=limit_memory(DECODER_MEMORY)
         )
         # zbarimg exits 4 when no barcode is found.
         if r.returncode != 0:
@@ -348,8 +382,9 @@ def capture_image(types, app):
     size = image_size(data, mime)
     if size:
         entry["w"], entry["h"] = int(size[0]), int(size[1])
-    # Unknown or huge dimensions → no QR/OCR pass (both decode the full image).
-    parse_ok = bool(size) and size[0] * size[1] <= MAX_PARSE_PIXELS
+    # Unknown or huge dimensions, or a multi-page TIFF → no QR/OCR pass (both
+    # decode the full file).
+    parse_ok = can_parse(data, mime)
 
     if not os.path.exists(path):
         try:
@@ -399,7 +434,7 @@ def decode_ocr(path, lang):
     try:
         r = subprocess.run(
             ["tesseract", path, "stdout", "-l", lang],
-            capture_output=True, timeout=30
+            capture_output=True, timeout=30, preexec_fn=limit_memory(DECODER_MEMORY)
         )
         if r.returncode != 0:
             return None
