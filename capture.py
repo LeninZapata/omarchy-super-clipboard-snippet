@@ -24,6 +24,7 @@ sanitize-images` applies the same filter to images already stored.
 import hashlib
 import json
 import os
+import resource
 import select
 import shutil
 import struct
@@ -74,13 +75,18 @@ def run(args, timeout=5):
         return None
 
 
-def read_bounded(args, limit, timeout=READ_TIMEOUT):
+def read_bounded(args, limit, timeout=READ_TIMEOUT, max_memory=None):
     """Run `args` and return its stdout, or None if it exits non-zero, writes
     more than `limit` bytes, or does not finish within `timeout` seconds.
     Output is streamed and the process is killed as soon as the cap is hit,
-    so memory use is bounded by `limit` regardless of what the source sends."""
+    so memory use is bounded by `limit` regardless of what the source sends.
+    `max_memory` (bytes) caps the child's whole address space (RLIMIT_AS): a
+    decoder that tries to go past it fails instead of exhausting RAM."""
+    def limit_memory():
+        resource.setrlimit(resource.RLIMIT_AS, (max_memory, max_memory))
     try:
-        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+        proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+                                preexec_fn=limit_memory if max_memory else None)
     except Exception:
         return None
     chunks = []

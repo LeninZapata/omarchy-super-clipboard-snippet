@@ -116,7 +116,9 @@ class SanitizePngTests(unittest.TestCase):
                 with open(os.path.join(d, name), "wb") as f:
                     f.write(data)
             self.assertEqual(capture.sanitize_image_dir(d), (2, 1))
-            read = lambda n: open(os.path.join(d, n), "rb").read()
+            def read(name):
+                with open(os.path.join(d, name), "rb") as f:
+                    return f.read()
             self.assertEqual(read("dirty.png"), png())
             self.assertEqual(read("disguised.jpg"), png())
             self.assertEqual(read("clean.png"), png())
@@ -145,7 +147,8 @@ class SanitizePngTests(unittest.TestCase):
             self.assertEqual(len(out), 1)
             self.assertEqual(out[0]["mime"], "image/png")
             self.assertTrue(out[0]["path"].endswith(".png"))
-            self.assertEqual(open(out[0]["path"], "rb").read(), png())
+            with open(out[0]["path"], "rb") as f:
+                self.assertEqual(f.read(), png())
             self.assertEqual(out[0]["bytes"], len(png()))
 
 

@@ -2,6 +2,11 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.6 - 2026-10-14 21:15
+---
+- [fix] A PNG copied as a file is previewed from a copy stripped of its metadata chunks, never from the original, so ffmpeg cannot expand its compressed text into gigabytes
+- [fix] Every preview decoder (ffprobe, ffmpeg, pdftoppm, pdfinfo) runs under a 1 GiB memory cap: a file that tries to use more just gets no thumbnail
+
 ## 0.2.5 - 2026-10-14 08:50
 ---
 - [fix] History, snippets, pause state and settings are owner-only: the plugin's folders are set to 700 and their files to 600 at shell start, existing ones included, and missing files are created private before anything is written
