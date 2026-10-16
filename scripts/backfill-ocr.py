@@ -58,12 +58,13 @@ def main():
             continue
         if not os.path.exists(entry["path"]):
             continue
-        # Same guard as the capture daemon (capture.can_parse): known dimensions
-        # under the pixel cap, and a TIFF only with a single page.
+        # Same guards as the capture daemon: the format comes from the bytes
+        # (capture.sniff_image_mime), and capture.can_parse wants known
+        # dimensions under the pixel cap and a TIFF only with a single page.
         with open(entry["path"], "rb") as f:
             data = f.read(capture.MAX_IMAGE_BYTES + 1)
-        mime = entry.get("mime") or "image/png"
-        if len(data) > capture.MAX_IMAGE_BYTES or not capture.can_parse(data, mime):
+        mime = capture.sniff_image_mime(data)
+        if not mime or len(data) > capture.MAX_IMAGE_BYTES or not capture.can_parse(data, mime):
             print(f"  - {entry['id']}: skipped (size {capture.image_size(data, mime) or 'unknown'})")
             continue
         text = ocr(entry["path"], args.lang)

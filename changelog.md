@@ -2,6 +2,11 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.8 - 2026-10-16 13:26
+---
+- [fix] Copied images are stored only when their bytes are PNG, JPEG, GIF, WebP, BMP or TIFF, whatever type the source app advertises: an SVG offered as `image/jpeg` (which could embed an unsanitized PNG) is no longer kept
+- [fix] Stored images that are not one of those formats by content are removed when the shell starts
+
 ## 0.2.7 - 2026-10-15 07:47
 ---
 - [fix] QR decoding and OCR (zbarimg, tesseract) run under the same 1 GiB memory cap as the file preview decoders, at capture and in the OCR backfill script

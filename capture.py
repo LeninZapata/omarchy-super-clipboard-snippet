@@ -16,9 +16,11 @@ The clipboard owner is untrusted: every payload is read through a bounded
 reader (byte cap + deadline) and QR/OCR only run on images whose header
 dimensions are under a pixel cap, so a hostile or runaway source cannot make
 the plugin buffer an unbounded payload or decode a decompression bomb.
-PNGs are stored stripped of every metadata chunk (text, ICC profile, Exif) so
-the shell's image decoder never inflates foreign metadata; `capture.py
-sanitize-images` applies the same filter to images already stored.
+Images are stored only when their bytes are one of the supported raster
+formats (the advertised mime is ignored), and PNGs are stored stripped of every
+metadata chunk (text, ICC profile, Exif) so the shell's image decoder never
+inflates foreign metadata; `capture.py sanitize-images` applies the same filter
+to images already stored.
 """
 
 import hashlib
@@ -224,6 +226,29 @@ def can_parse(data, mime):
 
 
 PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+
+
+def sniff_image_mime(data):
+    """The raster format the bytes really are (one of IMAGE_MIMES), or None.
+    Qt picks the decoder by content, not by the advertised mime or the file
+    extension: a clip offered as image/jpeg could be an SVG that embeds a PNG
+    the shell would then decode without sanitize_png. None of these headers can
+    start an SVG (text or gzip)."""
+    if data[:8] == PNG_SIGNATURE:
+        return "image/png"
+    if data[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if data[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if data[:4] == b"RIFF" and data[8:12] == b"WEBP":
+        return "image/webp"
+    if data[:2] == b"BM":
+        return "image/bmp"
+    if data[:4] in (b"II*\x00", b"MM\x00*"):
+        return "image/tiff"
+    return None
+
+
 # Fragmentos que el PNG guardado conserva: los de la imagen y los pequeños sin
 # comprimir. Fuera quedan los de texto (tEXt/zTXt/iTXt), el perfil de color
 # (iCCP), eXIf y cualquier otro: libpng descomprime y retiene los de texto y el
@@ -270,8 +295,10 @@ def sanitize_png(data):
 def sanitize_image_dir(directory=IMAGE_DIR):
     """Pass every stored image that is PNG by content (whatever its extension:
     Qt detects the format by its bytes) through sanitize_png, rewriting the ones
-    that change and deleting the ones that are not a well-formed PNG. Covers
-    images saved before 0.2.4. Returns (rewritten, removed)."""
+    that change and deleting the ones that are not a well-formed PNG, and delete
+    every file that is not a supported raster format by content (an SVG saved
+    as .jpg, say). Covers images saved before 0.2.4 and 0.2.8. Returns
+    (rewritten, removed)."""
     rewritten = removed = 0
     try:
         names = os.listdir(directory)
@@ -283,9 +310,14 @@ def sanitize_image_dir(directory=IMAGE_DIR):
             if not os.path.isfile(path) or os.path.islink(path):
                 continue
             with open(path, "rb") as f:
-                if f.read(8) != PNG_SIGNATURE:
+                head = f.read(12)
+                if sniff_image_mime(head) is None:
+                    os.unlink(path)
+                    removed += 1
                     continue
-                data = PNG_SIGNATURE + f.read()
+                if head[:8] != PNG_SIGNATURE:
+                    continue
+                data = head + f.read()
         except OSError:
             continue
         clean = sanitize_png(data)
@@ -366,13 +398,17 @@ def capture_image(types, app):
         # Oversized, slow, or empty: skip the clip entirely (an image mime was
         # offered, so we do not fall through to a text capture of it either).
         return True
-    # Un PNG (por contenido: Qt reconoce el formato por los bytes, no por el
-    # mime anunciado) se guarda sin sus metadatos; uno mal formado no se guarda.
-    if data[:8] == PNG_SIGNATURE or mime == "image/png":
+    # El formato sale de los bytes, no del mime anunciado (Qt también decide por
+    # contenido): lo que no sea un formato de imagen soportado (un SVG, por
+    # ejemplo) no se guarda, y un PNG se guarda sin sus metadatos; uno mal
+    # formado tampoco se guarda (reparo del marketplace al 0.2.7, issue #11191).
+    mime = sniff_image_mime(data)
+    if not mime:
+        return True
+    if mime == "image/png":
         data = sanitize_png(data)
         if not data:
             return True
-        mime = "image/png"
     os.makedirs(IMAGE_DIR, exist_ok=True)
     digest = hashlib.sha256(data).hexdigest()
     path = os.path.join(IMAGE_DIR, f"{digest}.{IMAGE_EXT[mime]}")

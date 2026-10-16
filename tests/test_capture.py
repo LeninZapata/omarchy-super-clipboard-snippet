@@ -1,9 +1,11 @@
+import base64
 import os
 import subprocess
 import sys
 import tempfile
 import unittest
 import unittest.mock
+from pathlib import Path
 
 
 class WatcherInputTests(unittest.TestCase):
@@ -112,11 +114,12 @@ class SanitizePngTests(unittest.TestCase):
                 "clean.png": png(),
                 "broken.png": png()[:-12],
                 "photo.jpg": b"\xff\xd8\xff\xe0 not a png",
+                "vector.jpg": b"<svg xmlns='http://www.w3.org/2000/svg'/>",  # no es imagen raster
             }
             for name, data in files.items():
                 with open(os.path.join(d, name), "wb") as f:
                     f.write(data)
-            self.assertEqual(capture.sanitize_image_dir(d), (2, 1))
+            self.assertEqual(capture.sanitize_image_dir(d), (2, 2))
             def read(name):
                 with open(os.path.join(d, name), "rb") as f:
                     return f.read()
@@ -124,6 +127,7 @@ class SanitizePngTests(unittest.TestCase):
             self.assertEqual(read("disguised.jpg"), png())
             self.assertEqual(read("clean.png"), png())
             self.assertFalse(os.path.exists(os.path.join(d, "broken.png")))
+            self.assertFalse(os.path.exists(os.path.join(d, "vector.jpg")))
             self.assertEqual(read("photo.jpg"), files["photo.jpg"])
 
     def test_capture_stores_the_stripped_png(self):
@@ -151,6 +155,56 @@ class SanitizePngTests(unittest.TestCase):
             with open(out[0]["path"], "rb") as f:
                 self.assertEqual(f.read(), png())
             self.assertEqual(out[0]["bytes"], len(png()))
+
+
+def capture_with(data, offered):
+    """capture_image over `data` offered as `offered`, in a temporary image
+    folder; returns (result, emitted entries, files left in the folder)."""
+    out = []
+    with tempfile.TemporaryDirectory() as d:
+        saved = (capture.IMAGE_DIR, capture.read_clipboard, capture.emit, capture.decode_qr, capture.decode_ocr)
+        capture.IMAGE_DIR = d
+        capture.read_clipboard = lambda mime, limit: data
+        capture.emit = out.append
+        capture.decode_qr = lambda path: None
+        capture.decode_ocr = lambda path, lang: None
+        try:
+            result = capture.capture_image([offered], "app")
+        finally:
+            (capture.IMAGE_DIR, capture.read_clipboard, capture.emit,
+             capture.decode_qr, capture.decode_ocr) = saved
+        files = {name: Path(d, name).read_bytes() for name in os.listdir(d)}
+    return result, out, files
+
+
+class ContentFormatTests(unittest.TestCase):
+    def test_format_comes_from_the_bytes(self):
+        self.assertEqual(capture.sniff_image_mime(png()), "image/png")
+        self.assertEqual(capture.sniff_image_mime(b"\xff\xd8\xff\xe0\x00\x10JFIF"), "image/jpeg")
+        self.assertEqual(capture.sniff_image_mime(b"GIF89a\x01\x00"), "image/gif")
+        self.assertEqual(capture.sniff_image_mime(b"RIFF\x00\x00\x00\x00WEBPVP8 "), "image/webp")
+        self.assertEqual(capture.sniff_image_mime(b"BM\x00\x00"), "image/bmp")
+        self.assertEqual(capture.sniff_image_mime(tiff((1, 1))), "image/tiff")
+        for other in (b"<svg/>", b"<?xml version='1.0'?><svg/>", b"\x1f\x8b\x08\x00", b"", b"\xff\xd8"):
+            self.assertIsNone(capture.sniff_image_mime(other))
+
+    def test_svg_offered_as_jpeg_is_not_stored(self):
+        embedded = base64.b64encode(png(chunk(b"zTXt", b"k\x00\x00" + zlib.compress(b"x" * 1000)))).decode()
+        svg = ("<svg xmlns='http://www.w3.org/2000/svg' xmlns:xlink='http://www.w3.org/1999/xlink'>"
+               f"<image xlink:href='data:image/png;base64,{embedded}'/></svg>").encode()
+        result, out, files = capture_with(svg, "image/jpeg")
+        self.assertTrue(result)  # el clip se descarta, sin caer a capturarlo como texto
+        self.assertEqual((out, files), ([], {}))
+
+    def test_stored_mime_and_extension_follow_the_content(self):
+        jpeg = b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 32
+        _, out, files = capture_with(jpeg, "image/png")
+        self.assertEqual(out[0]["mime"], "image/jpeg")
+        self.assertTrue(out[0]["path"].endswith(".jpg"))
+        self.assertEqual(list(files.values()), [jpeg])
+        _, out, files = capture_with(png(chunk(b"tEXt", b"a\x00b")), "image/jpeg")
+        self.assertEqual(out[0]["mime"], "image/png")
+        self.assertEqual(list(files.values()), [png()])
 
 
 class PrivateFilesTests(unittest.TestCase):
