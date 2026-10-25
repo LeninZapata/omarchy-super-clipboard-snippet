@@ -55,6 +55,7 @@ var strings = {
   "row.delete": "Delete",
   "row.more": "+{n} more",
   "row.image": "Image",
+  "row.typeTag": "type:{type}",
 
   "editor.title": "Editing clip",
   "editor.save": "save",

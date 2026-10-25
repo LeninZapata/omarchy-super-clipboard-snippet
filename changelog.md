@@ -2,6 +2,10 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.11 - 2026-10-25 12:02
+---
+- [feature] The selected or hovered clip shows its detected type next to its age and size, written as the search filter (`type:color`, `type:json`…) so it can be typed as-is to filter by it
+
 ## 0.2.10 - 2026-10-25 08:34
 ---
 - [fix] Pasting a text clip that looks like an email (`From:` / `To:` / `Subject:` headers) pasted nothing: it is now always offered as plain text instead of the type wl-copy guessed from its content (`message/rfc822`)
@@ -46,7 +50,3 @@
 ---
 - [fix] Editable fields (quick snippets search, actions filter, clear-history prompt, clip and snippet editors) only exist while their panel is open: a hidden but live text field re-read foreign clipboard text on every change, with no size or time limit
 - [update] The preview pane is only created while the window is visible
-
-## 0.2.1 - 2026-10-12 07:13
----
-- [fix] Old pins no longer vanish from the list once the history grows past the row cap (`maxRows`); they were kept in the history but cut from the view

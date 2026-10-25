@@ -2871,6 +2871,11 @@ Item {
               // Clip de color: [r, g, b] para el cuadro junto al título. Se pasa por
               // colorToRgb porque QML no entiende rgb()/hsl() y lee #rrggbbaa como #aarrggbb.
               readonly property var swatch: derived === "color" && entry ? Classify.colorToRgb(entry.text) : null
+              // Hora y tamaño; en la fila señalada o bajo el mouse, también el tipo detectado,
+              // escrito como el filtro de búsqueda (type:color) para poder filtrar por él.
+              readonly property string meta: (hasCursor || hovered)
+                ? (subtitle ? subtitle + "  ·  " : "") + root.t("row.typeTag", { type: derived })
+                : subtitle
               // Acciones a la vista solo con el mouse encima: con teclado no estorban.
               // El HoverHandler va en la fila entera (un hermano bajo el MouseArea no
               // recibe el hover), pero la zona del encabezado de grupo no cuenta.
@@ -3021,7 +3026,7 @@ Item {
                   Text {
                     width: parent.width
                     visible: !row.compact
-                    text: row.subtitle
+                    text: row.meta
                     color: root.rowMetaFg
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
@@ -3069,7 +3074,7 @@ Item {
               // del final del título, que se desvanece hacia ellos con un degradado.
               // Se corre a la izquierda del pin (★ ctrl+N) o de los botones del mouse.
               Item {
-                visible: root.zenUi && row.hasCursor && row.subtitle !== ""
+                visible: root.zenUi && row.hasCursor && row.meta !== ""
                 anchors.right: rowBg.right
                 anchors.rightMargin: Style.space(10) + (row.hovered ? rowActions.implicitWidth + Style.space(8)
                                                        : pinMark.visible ? pinMark.width + Style.space(10) : 0)
@@ -3102,7 +3107,7 @@ Item {
                   id: zenMetaText
                   anchors.right: parent.right
                   anchors.verticalCenter: parent.verticalCenter
-                  text: row.subtitle
+                  text: row.meta
                   color: root.mutedFg
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
