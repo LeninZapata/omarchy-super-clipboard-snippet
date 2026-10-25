@@ -2,6 +2,10 @@
 
 > What changed, by version (newest on top; the last 10 are kept).
 
+## 0.2.10 - 2026-10-25 08:34
+---
+- [fix] Pasting a text clip that looks like an email (`From:` / `To:` / `Subject:` headers) pasted nothing: it is now always offered as plain text instead of the type wl-copy guessed from its content (`message/rfc822`)
+
 ## 0.2.9 - 2026-10-25 08:29
 ---
 - [feature] Color clips (`#rgb`, `#rrggbb`, `#rrggbbaa`, `rgb()`, `hsl()`) show a small swatch of the color right after their text in the list
@@ -46,13 +50,3 @@
 ## 0.2.1 - 2026-10-12 07:13
 ---
 - [fix] Old pins no longer vanish from the list once the history grows past the row cap (`maxRows`); they were kept in the history but cut from the view
-
-## 0.2.0 - 2026-10-02 12:15
----
-- [feature] "Hide the content preview" setting: only the list, in a narrower window, with the type filters on their own line under the search
-- [feature] Zen mode (sub-option of the above): one-line rows, icons instead of labels, a thinner tab underline, filters hidden until Ctrl+F, and smaller, dimmer key hints that light up on hover
-- [feature] In zen mode the selected row shows its time and size at the right edge, over a fade
-- [feature] Ctrl+S opens and closes Settings (Ctrl+, still works), and is shown in the key hints
-- [update] The "Appearance" settings group is now "Layout"
-- [update] Key hints at the bottom wrap to a second line when they do not fit
-- [update] README: sections and screenshots for zen mode, pausing and clearing the history

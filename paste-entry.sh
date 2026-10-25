@@ -27,7 +27,9 @@ case "$type" in
     done < <(jq -r '.paths[]' <<<"$entry") | wl-copy --type text/uri-list
     ;;
   *)
-    jq -j '.text' <<<"$entry" | wl-copy
+    # Tipo explícito: sin él, wl-copy lo adivina por el contenido y un texto que
+    # parece un email sale solo como message/rfc822, sin ningún tipo de texto (omacom/omarchy#14490).
+    jq -j '.text' <<<"$entry" | wl-copy --type text/plain
     ;;
 esac
 
