@@ -2868,6 +2868,9 @@ Item {
 
               readonly property bool hasCursor: root.cursorActive && index === root.selectedIndex
               readonly property var entry: row_ ? row_.row.entry : null
+              // Clip de color: [r, g, b] para el cuadro junto al título. Se pasa por
+              // colorToRgb porque QML no entiende rgb()/hsl() y lee #rrggbbaa como #aarrggbb.
+              readonly property var swatch: derived === "color" && entry ? Classify.colorToRgb(entry.text) : null
               // Acciones a la vista solo con el mouse encima: con teclado no estorban.
               // El HoverHandler va en la fila entera (un hermano bajo el MouseArea no
               // recibe el hover), pero la zona del encabezado de grupo no cuenta.
@@ -2984,15 +2987,35 @@ Item {
                   anchors.verticalCenter: parent.verticalCenter
                   spacing: Style.space(2)
 
-                  Text {
+                  Row {
                     width: parent.width
-                    text: row.titleHtml
-                    textFormat: Text.StyledText
-                    color: row.hasCursor ? root.selectedText : root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    elide: Text.ElideRight
-                    maximumLineCount: 1
+                    spacing: Style.space(8)
+
+                    Text {
+                      id: titleText
+                      // Con cuadro de color, el título ocupa solo lo suyo para que el cuadro quede pegado.
+                      width: row.swatch ? Math.min(implicitWidth, parent.width - colorSwatch.width - parent.spacing)
+                                        : parent.width
+                      text: row.titleHtml
+                      textFormat: Text.StyledText
+                      color: row.hasCursor ? root.selectedText : root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      elide: Text.ElideRight
+                      maximumLineCount: 1
+                    }
+
+                    Rectangle {
+                      id: colorSwatch
+                      visible: !!row.swatch
+                      anchors.verticalCenter: titleText.verticalCenter
+                      width: visible ? Style.space(14) : 0
+                      height: Style.space(14)
+                      radius: Style.space(3)
+                      color: row.swatch ? Qt.rgba(row.swatch[0] / 255, row.swatch[1] / 255, row.swatch[2] / 255, 1) : "transparent"
+                      border.width: Style.normalBorderWidth
+                      border.color: Util.alpha(root.foreground, 0.25)
+                    }
                   }
 
                   Text {
